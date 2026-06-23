@@ -1,0 +1,56 @@
+{
+  "app": {
+    "signingConfigs": [
+      {
+        "name": "default",
+        "type": "HarmonyOS",
+        "material": {
+          "storeFile": "E:/github/HuaWei/Huawei_HarmonyOS/pdf_toolbox/signing/debug/HarmonyOS.p12",
+          "storePassword": "0000001890280610DD04A312D932671C6803E20B114567FF6B7EE9A97DEEDEA0CF28996DBF070572",
+          "keyAlias": "HarmonyOS",
+          "keyPassword": "0000001889595F8FF9FCEFCCAF3EB632E3005A5875C428A3BD75DBFFFEDA700F48B5DE34661D1608",
+          "signAlg": "SHA256withECDSA",
+          "profile": "E:/github/HuaWei/Huawei_HarmonyOS/pdf_toolbox/signing/debug/Pdf_Toolbox_ProfileDebug.p7b",
+          "certpath": "E:/github/HuaWei/Huawei_HarmonyOS/pdf_toolbox/signing/debug/Debug_Cert.cer"
+        }
+      }
+    ],
+    "products": [
+      {
+        "name": "default",
+        "signingConfig": "default",
+        "targetSdkVersion": "6.1.1(24)",
+        "compatibleSdkVersion": "6.0.0(20)",
+        "runtimeOS": "HarmonyOS",
+        "buildOption": {
+          "strictMode": {
+            "caseSensitiveCheck": true,
+            "useNormalizedOHMUrl": true
+          }
+        }
+      }
+    ],
+    "buildModeSet": [
+      {
+        "name": "debug",
+      },
+      {
+        "name": "release"
+      }
+    ]
+  },
+  "modules": [
+    {
+      "name": "entry",
+      "srcPath": "./entry",
+      "targets": [
+        {
+          "name": "default",
+          "applyToProducts": [
+            "default"
+          ]
+        }
+      ]
+    }
+  ]
+}
