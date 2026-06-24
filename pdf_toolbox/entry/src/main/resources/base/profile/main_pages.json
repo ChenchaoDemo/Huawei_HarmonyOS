@@ -3,6 +3,7 @@
     "pages/Index",
     "pages/main/ToolRunnerPage",
     "pages/main/DocumentScanPage",
+    "pages/main/FilePreviewPage",
     "pages/guide/UsageGuidePage",
     "pages/guide/PrivacyGuidePage"
   ]

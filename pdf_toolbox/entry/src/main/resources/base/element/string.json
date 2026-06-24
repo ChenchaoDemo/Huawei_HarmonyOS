@@ -11,14 +11,6 @@
     {
       "name": "EntryAbility_label",
       "value": "文件处理工具箱"
-    },
-    {
-      "name": "permission_read_imagevideo_reason",
-      "value": "用于读取你主动选择的图片，生成图片转 PDF、扫描 PDF 或证件扫描结果。"
-    },
-    {
-      "name": "permission_read_document_reason",
-      "value": "用于读取你主动选择的 PDF、文本或 Office 文件，完成合并、拆分、转换等处理。"
     }
   ]
 }

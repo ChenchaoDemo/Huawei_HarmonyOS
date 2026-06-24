@@ -1,8 +1,14 @@
-import { promptAction } from '@kit.ArkUI';
+import { promptAction, router } from '@kit.ArkUI';
 import { PAGE_BG, PRIMARY_COLOR, TEXT_MUTED, TEXT_PRIMARY } from '../../constants/AppConstants';
-import { HistoryRecord } from '../../models/ToolModels';
+import { FilePreviewRouteParams, HistoryRecord } from '../../models/ToolModels';
 import { FileService } from '../../services/FileService';
 import { HistoryService } from '../../services/HistoryService';
+import { ShareService } from '../../services/ShareService';
+
+class FilePreviewRouterOptions {
+  url: string = '';
+  params?: Object;
+}
 
 @Component
 export struct HistoryPage {
@@ -27,31 +33,30 @@ export struct HistoryPage {
     return `${record.toolName} ${record.toolType} ${record.sourceFileName} ${record.resultFileName} ${record.status}`.toLowerCase();
   }
 
-  private fileExtText(record: HistoryRecord): string {
-    return `${record.sourceFileName} ${record.resultFileName}`.toLowerCase();
-  }
-
   private resultExt(record: HistoryRecord): string {
     const fileName = record.resultFileName.toLowerCase();
     const dotIndex = fileName.lastIndexOf('.');
     return dotIndex >= 0 ? fileName.substring(dotIndex + 1) : 'file';
   }
 
+  private resultExtIn(record: HistoryRecord, extensions: string[]): boolean {
+    return extensions.includes(this.resultExt(record));
+  }
+
   private typeLabel(record: HistoryRecord): string {
-    const text = this.fileExtText(record);
     if (record.toolType === 'scan') {
       return '扫描件';
     }
-    if (text.includes('.pdf')) {
+    if (this.resultExtIn(record, ['pdf'])) {
       return 'PDF';
     }
-    if (text.includes('.jpg') || text.includes('.jpeg') || text.includes('.png') || text.includes('.webp')) {
+    if (this.resultExtIn(record, ['jpg', 'jpeg', 'png', 'webp'])) {
       return '图片';
     }
-    if (text.includes('.doc') || text.includes('.xls') || text.includes('.ppt') || text.includes('.csv')) {
+    if (this.resultExtIn(record, ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'csv'])) {
       return 'Office';
     }
-    if (text.includes('.txt') || text.includes('.md')) {
+    if (this.resultExtIn(record, ['txt', 'md', 'log'])) {
       return '文本';
     }
     return this.resultExt(record).toUpperCase();
@@ -86,18 +91,17 @@ export struct HistoryPage {
     if (this.selectedType === 'all') {
       return true;
     }
-    const text = this.fileExtText(record);
     if (this.selectedType === 'pdf') {
-      return text.includes('.pdf') || record.toolType === 'pdf';
+      return this.resultExtIn(record, ['pdf']);
     }
     if (this.selectedType === 'image') {
-      return text.includes('.jpg') || text.includes('.jpeg') || text.includes('.png') || text.includes('.webp');
+      return this.resultExtIn(record, ['jpg', 'jpeg', 'png', 'webp']);
     }
     if (this.selectedType === 'office') {
-      return text.includes('.doc') || text.includes('.xls') || text.includes('.ppt') || text.includes('.csv');
+      return this.resultExtIn(record, ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'csv']);
     }
     if (this.selectedType === 'text') {
-      return text.includes('.txt') || text.includes('.md');
+      return this.resultExtIn(record, ['txt', 'md', 'log']);
     }
     if (this.selectedType === 'scan') {
       return record.toolType === 'scan';
@@ -147,6 +151,35 @@ export struct HistoryPage {
     } catch (error) {
       promptAction.showToast({ message: `保存失败：${JSON.stringify(error)}` });
     }
+  }
+
+  async shareRecordFile(record: HistoryRecord): Promise<void> {
+    try {
+      await ShareService.shareFile({
+        name: record.resultFileName,
+        path: record.resultPath,
+        summary: `${record.toolName} · ${record.createTime}`
+      });
+    } catch (error) {
+      promptAction.showToast({ message: `分享失败：${JSON.stringify(error)}` });
+    }
+  }
+
+  openRecordPreview(record: HistoryRecord): void {
+    const options = new FilePreviewRouterOptions();
+    options.url = 'pages/main/FilePreviewPage';
+    const params: FilePreviewRouteParams = {
+      name: record.resultFileName,
+      path: record.resultPath,
+      size: 0,
+      sizeText: record.fileSize,
+      summary: `${record.toolName} · ${record.createTime}`,
+      toolName: record.toolName
+    };
+    options.params = params as Object;
+    router.pushUrl(options).catch((err: Error) => {
+      promptAction.showToast({ message: `预览页打开失败：${err.message}` });
+    });
   }
 
   @Builder
@@ -310,9 +343,9 @@ export struct HistoryPage {
       .width('100%')
 
       Row({ space: 8 }) {
-        this.ActionButton('打开', PRIMARY_COLOR, '#EAF1FF', () => promptAction.showToast({ message: `结果路径：${record.resultPath}` }))
+        this.ActionButton('预览', PRIMARY_COLOR, '#EAF1FF', () => this.openRecordPreview(record))
         this.ActionButton('保存', '#FFFFFF', PRIMARY_COLOR, () => this.saveRecordFile(record))
-        this.ActionButton('分享', PRIMARY_COLOR, '#EAF1FF', () => promptAction.showToast({ message: '系统分享入口待接入' }))
+        this.ActionButton('分享', PRIMARY_COLOR, '#EAF1FF', () => this.shareRecordFile(record))
         this.ActionButton('删除', '#D92D20', '#FFF0F0', () => this.remove(record.id))
       }
       .width('100%')

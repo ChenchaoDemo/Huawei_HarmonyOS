@@ -82,6 +82,26 @@ export interface ProcessResultView {
   summary: string;
 }
 
+export interface PreviewSourceFile {
+  id: string;
+  name: string;
+  uri: string;
+  size: number;
+  ext: string;
+  type: string;
+}
+
+export interface FilePreviewRouteParams {
+  name?: string;
+  path?: string;
+  size?: number;
+  sizeText?: string;
+  summary?: string;
+  toolName?: string;
+  sources?: PreviewSourceFile[];
+  textPreview?: string;
+}
+
 export interface HistoryRecord {
   id: string;
   toolName: string;

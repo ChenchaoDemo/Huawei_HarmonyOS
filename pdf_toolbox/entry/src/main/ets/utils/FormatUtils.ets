@@ -36,6 +36,30 @@ export function generateFileName(prefix: string, ext: string): string {
   return `${prefix}_${stamp}.${ext}`;
 }
 
+export function fileStem(name: string): string {
+  const clean = (name || '').split('?')[0].split('/').pop() || '';
+  const dotIndex = clean.lastIndexOf('.');
+  const raw = dotIndex > 0 ? clean.substring(0, dotIndex) : clean;
+  return raw
+    .trim()
+    .replace(INVALID_FILE_CHARS, '_')
+    .replace(/\s+/g, ' ')
+    .replace(/^\.+/, '')
+    .replace(/[. ]+$/, '')
+    .slice(0, 42);
+}
+
+export function businessOutputFileName(prefix: string, ext: string): string {
+  const cleanPrefix = (prefix || '文件处理结果')
+    .trim()
+    .replace(INVALID_FILE_CHARS, '_')
+    .replace(/\s+/g, ' ')
+    .replace(/^\.+/, '')
+    .replace(/[. ]+$/, '')
+    .slice(0, 64) || '文件处理结果';
+  return generateFileName(cleanPrefix, (ext || 'pdf').replace(/^\./, '').toLowerCase());
+}
+
 export function normalizeOutputFileName(name: string, fallbackPrefix: string, ext: string): string {
   const cleanExt = (ext || 'pdf').replace(/^\./, '').toLowerCase();
   const base = (name || '')

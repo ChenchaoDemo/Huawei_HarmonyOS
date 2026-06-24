@@ -3,14 +3,20 @@ import { PAGE_BG, PRIMARY_COLOR, TEXT_MUTED, TEXT_PRIMARY, TOOL_CONFIGS, TOOLS, 
 import { FilePickerPanel } from '../../components/FilePickerPanel';
 import { ResultPanel } from '../../components/ResultPanel';
 import { SettingRow } from '../../components/SettingRow';
-import { PickedFile, ProcessResultView, ProcessorRequest, SettingMap, SettingValue, ToolConfig, ToolMeta, ToolSetting } from '../../models/ToolModels';
+import { FilePreviewRouteParams, PickedFile, PreviewSourceFile, ProcessResultView, ProcessorRequest, SettingMap, SettingValue, ToolConfig, ToolMeta, ToolSetting } from '../../models/ToolModels';
 import { FileService } from '../../services/FileService';
 import { HistoryService } from '../../services/HistoryService';
+import { ShareService } from '../../services/ShareService';
 import { ProcessorRegistry } from '../../processors/ProcessorRegistry';
-import { formatFileSize, generateId, normalizeOutputFileName, nowText } from '../../utils/FormatUtils';
+import { businessOutputFileName, fileStem, formatFileSize, generateId, normalizeOutputFileName, nowText } from '../../utils/FormatUtils';
 
 interface ToolRunnerRouteParams {
   toolId?: string;
+}
+
+class FilePreviewRouterOptions {
+  url: string = '';
+  params?: Object;
 }
 
 @Entry
@@ -22,6 +28,7 @@ struct ToolRunnerPage {
   @State files: PickedFile[] = [];
   @State inputText: string = '';
   @State outputName: string = '';
+  @State outputNameEdited: boolean = false;
   @State settings: SettingMap = new Map<string, SettingValue>();
   @State processing: boolean = false;
   @State progress: number = 0;
@@ -35,6 +42,7 @@ struct ToolRunnerPage {
       this.toolId = params.toolId;
     }
     this.initSettings();
+    this.refreshDefaultOutputName();
   }
 
   private tool(): ToolMeta {
@@ -73,6 +81,71 @@ struct ToolRunnerPage {
       return err.message;
     }
     return JSON.stringify(err);
+  }
+
+  private outputExt(): string {
+    return this.config().resultExt || 'pdf';
+  }
+
+  private defaultOutputPrefix(): string {
+    const toolName = this.tool().name;
+    const config = this.config();
+    if (this.files.length > 0) {
+      if (config.pickMode === 'image' || config.pickMode === 'camera') {
+        return `${toolName}_${this.files.length}张图片`;
+      }
+      if (this.files.length === 1) {
+        const stem = fileStem(this.files[0].name);
+        return stem.length > 0 ? `${stem}_${toolName}` : toolName;
+      }
+      return `${toolName}_${this.files.length}个文件`;
+    }
+    if (config.pickMode === 'text' && this.inputText.trim().length > 0) {
+      return `${toolName}_文本内容`;
+    }
+    return toolName;
+  }
+
+  private refreshDefaultOutputName(): void {
+    if (!this.outputNameEdited) {
+      this.outputName = businessOutputFileName(this.defaultOutputPrefix(), this.outputExt());
+    }
+  }
+
+  private previewSources(): PreviewSourceFile[] {
+    return this.files.map((file: PickedFile): PreviewSourceFile => {
+      return {
+        id: file.id,
+        name: file.name,
+        uri: file.uri,
+        size: file.size,
+        ext: file.ext,
+        type: file.type
+      };
+    });
+  }
+
+  private textPreviewValue(file?: PickedFile): string {
+    if (this.config().pickMode === 'text' && this.inputText.trim().length > 0) {
+      return this.inputText;
+    }
+    if (file && file.ext === 'txt') {
+      try {
+        return FileService.readText(file);
+      } catch (_) {
+        return '';
+      }
+    }
+    return '';
+  }
+
+  private openPreview(params: FilePreviewRouteParams): void {
+    const options = new FilePreviewRouterOptions();
+    options.url = 'pages/main/FilePreviewPage';
+    options.params = params as Object;
+    router.pushUrl(options).catch((err: Error) => {
+      promptAction.showToast({ message: `预览页打开失败：${err.message}` });
+    });
   }
 
   private pickTitle(): string {
@@ -119,6 +192,7 @@ struct ToolRunnerPage {
         this.inputText = FileService.readText(picked[0]);
       }
       this.files = config.multiple ? this.files.concat(picked).slice(0, maxCount) : picked.slice(0, 1);
+      this.refreshDefaultOutputName();
       this.progressLabel = `已选择 ${this.files.length} 个文件`;
       this.result = undefined;
       promptAction.showToast({ message: `已选择 ${picked.length} 个文件` });
@@ -142,17 +216,20 @@ struct ToolRunnerPage {
   removeFile(index: number): void {
     this.files = this.files.filter((_: PickedFile, itemIndex: number) => itemIndex !== index);
     this.result = undefined;
+    this.refreshDefaultOutputName();
   }
 
   reset(): void {
     this.files = [];
     this.inputText = '';
     this.outputName = '';
+    this.outputNameEdited = false;
     this.result = undefined;
     this.error = '';
     this.progress = 0;
     this.progressLabel = '未选择文件';
     this.initSettings();
+    this.refreshDefaultOutputName();
   }
 
   async tick(label: string, percent: number): Promise<void> {
@@ -236,6 +313,50 @@ struct ToolRunnerPage {
     }
   }
 
+  async shareResult(): Promise<void> {
+    if (!this.result) {
+      promptAction.showToast({ message: '没有可分享的文件' });
+      return;
+    }
+    try {
+      await ShareService.shareFile({
+        name: this.result.name,
+        path: this.result.path,
+        summary: this.result.summary
+      });
+    } catch (err) {
+      promptAction.showToast({ message: `分享失败：${this.errText(err as Error | Object)}` });
+    }
+  }
+
+  openResultPreview(): void {
+    if (!this.result) {
+      promptAction.showToast({ message: '没有可预览的文件' });
+      return;
+    }
+    this.openPreview({
+      name: this.result.name,
+      path: this.result.path,
+      size: this.result.size,
+      summary: this.result.summary,
+      toolName: this.tool().name,
+      sources: this.previewSources(),
+      textPreview: this.textPreviewValue()
+    });
+  }
+
+  openPickedFilePreview(file: PickedFile): void {
+    this.openPreview({
+      name: file.name,
+      path: file.uri,
+      size: file.size,
+      summary: '这是当前选择的源文件，确认无误后可返回继续处理。',
+      toolName: this.tool().name,
+      sources: [file],
+      textPreview: this.textPreviewValue(file)
+    });
+  }
+
   build() {
     Column() {
       Row({ space: 10 }) {
@@ -285,7 +406,10 @@ struct ToolRunnerPage {
                 .fontSize(14)
                 .backgroundColor('#F5F7FC')
                 .borderRadius(8)
-                .onChange((value: string) => this.inputText = value)
+                .onChange((value: string) => {
+                  this.inputText = value;
+                  this.refreshDefaultOutputName();
+                })
               Button('选择 TXT 文件')
                 .height(42)
                 .fontSize(14)
@@ -307,6 +431,12 @@ struct ToolRunnerPage {
                   }
                   .layoutWeight(1)
                   .alignItems(HorizontalAlign.Start)
+                  Button('预览')
+                    .height(34)
+                    .fontSize(12)
+                    .fontColor(PRIMARY_COLOR)
+                    .backgroundColor('#EAF1FF')
+                    .onClick(() => this.openPickedFilePreview(this.files[0]))
                   Button('移除')
                     .height(34)
                     .fontSize(12)
@@ -325,6 +455,7 @@ struct ToolRunnerPage {
                 desc: this.pickDesc(),
                 files: this.files,
                 onPick: () => this.pickFiles(),
+                onPreview: (file: PickedFile) => this.openPickedFilePreview(file),
                 onMove: (index: number, step: number) => this.moveFile(index, step),
                 onRemove: (index: number) => this.removeFile(index)
               })
@@ -358,7 +489,10 @@ struct ToolRunnerPage {
                 .fontSize(14)
                 .backgroundColor('#F5F7FC')
                 .borderRadius(8)
-                .onChange((value: string) => this.outputName = value)
+                .onChange((value: string) => {
+                  this.outputNameEdited = true;
+                  this.outputName = value;
+                })
                 .margin({ bottom: 8 })
               if (this.config().settings.length > 0) {
                 ForEach(this.config().settings, (setting: ToolSetting) => {
@@ -436,9 +570,9 @@ struct ToolRunnerPage {
 
           ResultPanel({
             result: this.result,
-            onOpen: () => promptAction.showToast({ message: this.result ? `结果路径：${this.result.path}` : '没有可打开的文件' }),
+            onOpen: () => this.openResultPreview(),
             onSave: () => this.saveResult(),
-            onShare: () => promptAction.showToast({ message: '系统分享入口待接入' })
+            onShare: () => this.shareResult()
           })
 
           Button('重新选择文件')

@@ -1,11 +1,19 @@
 import { promptAction, router } from '@kit.ArkUI';
 import { PAGE_BG, PRIMARY_COLOR, TEXT_MUTED, TEXT_PRIMARY } from '../../constants/AppConstants';
 import { ResultPanel } from '../../components/ResultPanel';
-import { PickedFile, ProcessResultView, ProcessorRequest, SettingMap, SettingValue } from '../../models/ToolModels';
+import { FilePreviewRouteParams, PickedFile, PreviewSourceFile, ProcessResultView, ProcessorRequest, SettingMap, SettingValue } from '../../models/ToolModels';
 import { FileService } from '../../services/FileService';
 import { HistoryService } from '../../services/HistoryService';
+import { ShareService } from '../../services/ShareService';
 import { documentScan } from '../../processors/ImageProcessor';
-import { formatFileSize, generateId, normalizeOutputFileName, nowText } from '../../utils/FormatUtils';
+import { businessOutputFileName, formatFileSize, generateId, normalizeOutputFileName, nowText } from '../../utils/FormatUtils';
+
+class FilePreviewRouterOptions {
+  url: string = '';
+  params?: Object;
+}
+
+const MAX_SCAN_IMAGE_COUNT = 50;
 
 @Entry
 @Component
@@ -13,6 +21,7 @@ struct DocumentScanPage {
   onBack: () => void = () => router.back();
   @State files: PickedFile[] = [];
   @State outputName: string = '';
+  @State outputNameEdited: boolean = false;
   @State settings: SettingMap = new Map<string, SettingValue>([
     ['direction', '竖向'],
     ['margin', '窄边距'],
@@ -28,6 +37,10 @@ struct DocumentScanPage {
   @State progressLabel: string = '等待扫描';
   @State result?: ProcessResultView = undefined;
   @State error: string = '';
+
+  aboutToAppear(): void {
+    this.refreshDefaultOutputName();
+  }
 
   private setSetting(key: string, value: SettingValue): void {
     const next: SettingMap = new Map<string, SettingValue>(this.settings);
@@ -47,11 +60,46 @@ struct DocumentScanPage {
     return JSON.stringify(err);
   }
 
+  private defaultOutputPrefix(): string {
+    if (this.files.length > 0) {
+      return `文件扫描_${this.files.length}张图片`;
+    }
+    return '文件扫描';
+  }
+
+  private refreshDefaultOutputName(): void {
+    if (!this.outputNameEdited) {
+      this.outputName = businessOutputFileName(this.defaultOutputPrefix(), 'pdf');
+    }
+  }
+
+  private previewSources(): PreviewSourceFile[] {
+    return this.files.map((file: PickedFile): PreviewSourceFile => {
+      return {
+        id: file.id,
+        name: file.name,
+        uri: file.uri,
+        size: file.size,
+        ext: file.ext,
+        type: file.type
+      };
+    });
+  }
+
+  private openPreview(params: FilePreviewRouteParams): void {
+    const options = new FilePreviewRouterOptions();
+    options.url = 'pages/main/FilePreviewPage';
+    options.params = params as Object;
+    router.pushUrl(options).catch((err: Error) => {
+      promptAction.showToast({ message: `预览页打开失败：${err.message}` });
+    });
+  }
+
   async pickImages(): Promise<void> {
     try {
-      const remaining = 9 - this.files.length;
+      const remaining = MAX_SCAN_IMAGE_COUNT - this.files.length;
       if (remaining <= 0) {
-        promptAction.showToast({ message: '最多选择 9 张图片' });
+        promptAction.showToast({ message: `最多选择 ${MAX_SCAN_IMAGE_COUNT} 张图片` });
         return;
       }
       const picked = await FileService.pickImages(remaining);
@@ -59,7 +107,8 @@ struct DocumentScanPage {
         promptAction.showToast({ message: '未选择图片' });
         return;
       }
-      this.files = this.files.concat(picked).slice(0, 9);
+      this.files = this.files.concat(picked).slice(0, MAX_SCAN_IMAGE_COUNT);
+      this.refreshDefaultOutputName();
       this.result = undefined;
       this.error = '';
       this.progressLabel = `已选择 ${this.files.length} 张图片`;
@@ -84,10 +133,13 @@ struct DocumentScanPage {
   removeImage(index: number): void {
     this.files = this.files.filter((_: PickedFile, itemIndex: number) => itemIndex !== index);
     this.result = undefined;
+    this.refreshDefaultOutputName();
   }
 
   clearImages(): void {
     this.files = [];
+    this.outputNameEdited = false;
+    this.refreshDefaultOutputName();
     this.result = undefined;
     this.progress = 0;
     this.progressLabel = '等待扫描';
@@ -164,16 +216,61 @@ struct DocumentScanPage {
     }
   }
 
+  async shareResult(): Promise<void> {
+    if (!this.result) {
+      promptAction.showToast({ message: '没有可分享的文件' });
+      return;
+    }
+    try {
+      await ShareService.shareFile({
+        name: this.result.name,
+        path: this.result.path,
+        summary: this.result.summary
+      });
+    } catch (err) {
+      promptAction.showToast({ message: `分享失败：${this.errText(err as Error | Object)}` });
+    }
+  }
+
+  openResultPreview(): void {
+    if (!this.result) {
+      promptAction.showToast({ message: '没有可预览的文件' });
+      return;
+    }
+    this.openPreview({
+      name: this.result.name,
+      path: this.result.path,
+      size: this.result.size,
+      summary: this.result.summary,
+      toolName: '文件扫描',
+      sources: this.previewSources()
+    });
+  }
+
+  openImagePreview(file: PickedFile, index: number): void {
+    this.openPreview({
+      name: file.name,
+      path: file.uri,
+      size: file.size,
+      summary: `扫描图片第 ${index + 1} 页`,
+      toolName: '文件扫描',
+      sources: [file]
+    });
+  }
+
   @Builder
   Chip(label: string, key: string) {
     Text(label)
       .height(36)
       .fontSize(13)
+      .fontWeight(this.value(key) === label ? FontWeight.Bold : FontWeight.Medium)
       .fontColor(this.value(key) === label ? Color.White : '#52607A')
       .textAlign(TextAlign.Center)
-      .padding({ left: 12, right: 12, top: 7, bottom: 7 })
+      .padding({ left: 14, right: 14, top: 7, bottom: 7 })
+      .margin({ right: 8, bottom: 8 })
       .borderRadius(8)
       .backgroundColor(this.value(key) === label ? PRIMARY_COLOR : '#F1F4FB')
+      .border({ width: 1, color: this.value(key) === label ? PRIMARY_COLOR : '#E2E9F5' })
       .onClick(() => this.setSetting(key, label))
   }
 
@@ -268,6 +365,7 @@ struct DocumentScanPage {
                         .objectFit(ImageFit.Cover)
                         .borderRadius({ topLeft: 8, topRight: 8 })
                         .backgroundColor('#EEF3FF')
+                        .onClick(() => this.openImagePreview(file, index))
                       Text(`第 ${index + 1} 页`)
                         .fontSize(13)
                         .fontWeight(FontWeight.Bold)
@@ -275,6 +373,13 @@ struct DocumentScanPage {
                         .width('100%')
                         .padding({ left: 8, right: 8 })
                       Row({ space: 6 }) {
+                        Button('预览')
+                          .height(36)
+                          .fontSize(11)
+                          .fontColor(PRIMARY_COLOR)
+                          .backgroundColor('#EAF1FF')
+                          .layoutWeight(1)
+                          .onClick(() => this.openImagePreview(file, index))
                         Button('上移')
                           .height(36)
                           .fontSize(11)
@@ -360,7 +465,10 @@ struct DocumentScanPage {
               .fontSize(14)
               .backgroundColor('#F5F7FC')
               .borderRadius(8)
-              .onChange((value: string) => this.outputName = value)
+              .onChange((value: string) => {
+                this.outputNameEdited = true;
+                this.outputName = value;
+              })
             Text('页面方向')
               .fontSize(14)
               .fontWeight(FontWeight.Bold)
@@ -513,9 +621,9 @@ struct DocumentScanPage {
 
           ResultPanel({
             result: this.result,
-            onOpen: () => promptAction.showToast({ message: this.result ? `结果路径：${this.result.path}` : '没有可打开的文件' }),
+            onOpen: () => this.openResultPreview(),
             onSave: () => this.saveResult(),
-            onShare: () => promptAction.showToast({ message: '系统分享入口待接入' })
+            onShare: () => this.shareResult()
           })
         }
         .padding({ left: 16, right: 16, bottom: 24 })

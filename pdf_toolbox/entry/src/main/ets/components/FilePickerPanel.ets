@@ -8,6 +8,7 @@ export struct FilePickerPanel {
   @Prop desc: string = '点击选择文件';
   @Prop files: PickedFile[] = [];
   onPick: () => void = () => {};
+  onPreview: (file: PickedFile) => void = () => {};
   onMove: (index: number, step: number) => void = () => {};
   onRemove: (index: number) => void = () => {};
 
@@ -71,6 +72,7 @@ export struct FilePickerPanel {
               .alignItems(HorizontalAlign.Start)
 
               Row({ space: 6 }) {
+                this.MiniAction('预览', PRIMARY_COLOR, () => this.onPreview(file))
                 this.MiniAction('上移', PRIMARY_COLOR, () => this.onMove(index, -1))
                 this.MiniAction('下移', PRIMARY_COLOR, () => this.onMove(index, 1))
                 this.MiniAction('删除', '#D92D20', () => this.onRemove(index))

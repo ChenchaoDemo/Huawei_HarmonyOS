@@ -3,8 +3,8 @@ import { SettingValue, ToolSetting } from '../models/ToolModels';
 
 @Component
 export struct SettingRow {
-  setting: ToolSetting = { key: '', label: '', type: 'input' };
-  value: SettingValue = '';
+  @Prop setting: ToolSetting = { key: '', label: '', type: 'input' };
+  @Prop value: SettingValue = '';
   onValueChange: (key: string, value: SettingValue) => void = () => {};
 
   private valueText(): string {
@@ -20,11 +20,14 @@ export struct SettingRow {
     Text(option)
       .height(36)
       .fontSize(13)
+      .fontWeight(this.valueText() === option ? FontWeight.Bold : FontWeight.Medium)
       .fontColor(this.valueText() === option ? Color.White : '#52607A')
       .textAlign(TextAlign.Center)
-      .padding({ left: 12, right: 12, top: 7, bottom: 7 })
+      .padding({ left: 14, right: 14, top: 7, bottom: 7 })
+      .margin({ right: 8, bottom: 8 })
       .borderRadius(8)
       .backgroundColor(this.valueText() === option ? PRIMARY_COLOR : '#F1F4FB')
+      .border({ width: 1, color: this.valueText() === option ? PRIMARY_COLOR : '#E2E9F5' })
       .onClick(() => this.onValueChange(this.setting.key, option))
   }
 
