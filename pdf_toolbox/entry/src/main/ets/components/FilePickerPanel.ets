@@ -4,9 +4,9 @@ import { formatFileSize } from '../utils/FormatUtils';
 
 @Component
 export struct FilePickerPanel {
-  title: string = '选择文件';
-  desc: string = '点击选择文件';
-  files: PickedFile[] = [];
+  @Prop title: string = '选择文件';
+  @Prop desc: string = '点击选择文件';
+  @Prop files: PickedFile[] = [];
   onPick: () => void = () => {};
   onMove: (index: number, step: number) => void = () => {};
   onRemove: (index: number) => void = () => {};

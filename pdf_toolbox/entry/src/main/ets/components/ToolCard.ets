@@ -17,44 +17,37 @@ export struct ToolCard {
   onOpen: (tool: ToolMeta) => void = () => {};
 
   build() {
-    Row({ space: 12 }) {
-      ToolIcon({ label: this.tool.iconText })
+    Row({ space: 10 }) {
+      ToolIcon({ label: this.tool.iconText, iconSize: 38, radius: 11 })
+
       Column({ space: 6 }) {
-        Row({ space: 6 }) {
+        Row() {
           Text(this.tool.name)
             .fontSize(15)
             .fontWeight(FontWeight.Bold)
             .fontColor(TEXT_PRIMARY)
+            .layoutWeight(1)
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
-            .layoutWeight(1)
-          if (this.tool.hot) {
-            Text('HOT')
-              .fontSize(9)
-              .fontWeight(FontWeight.Bold)
-              .fontColor('#FF5A3D')
-              .padding({ left: 5, right: 5, top: 2, bottom: 2 })
-              .borderRadius(6)
-              .backgroundColor('#FFF0EC')
-          }
         }
-        .width('100%')
 
         Text(this.tool.desc)
           .fontSize(12)
           .fontColor(TEXT_MUTED)
-          .lineHeight(17)
+          .lineHeight(16)
           .maxLines(2)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .width('100%')
       }
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start)
     }
+    .width('100%')
     .height(86)
     .padding(12)
     .borderRadius(8)
     .backgroundColor(Color.White)
-    .shadow({ radius: 10, color: '#1023355C', offsetY: 3 })
+    .shadow({ radius: 8, color: '#0D23355C', offsetY: 3 })
     .onClick(() => this.onOpen(this.tool))
   }
 }

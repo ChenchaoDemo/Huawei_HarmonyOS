@@ -4,7 +4,7 @@ import { formatFileSize } from '../utils/FormatUtils';
 
 @Component
 export struct ResultPanel {
-  result?: ProcessResultView;
+  @Prop result: ProcessResultView | undefined = undefined;
   onOpen: () => void = () => {};
   onSave: () => void = () => {};
   onShare: () => void = () => {};

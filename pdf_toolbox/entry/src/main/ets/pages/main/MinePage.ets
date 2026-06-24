@@ -1,11 +1,16 @@
 import { promptAction } from '@kit.ArkUI';
+import { updateManager } from '@kit.AppGalleryKit';
 import { APP_NAME, PAGE_BG, PRIMARY_COLOR, PURPLE_COLOR, TEXT_MUTED, TEXT_PRIMARY, TOOLS } from '../../constants/AppConstants';
+import { AppContext } from '../../services/AppContext';
 import { FileService } from '../../services/FileService';
 import { HistoryService } from '../../services/HistoryService';
 
 @Component
 export struct MinePage {
   @State recordCount: number = 0;
+  @State checkingUpdate: boolean = false;
+  onOpenUsage: () => void = () => {};
+  onOpenPrivacy: () => void = () => {};
 
   async aboutToAppear(): Promise<void> {
     this.recordCount = (await HistoryService.getRecords()).length;
@@ -15,11 +20,38 @@ export struct MinePage {
     FileService.clearTempFiles();
     await HistoryService.clearRecords();
     this.recordCount = 0;
-    promptAction.showToast({ message: '已清理缓存和记录' });
+    promptAction.showToast({ message: '已清理缓存和处理记录' });
+  }
+
+  async checkUpdate(): Promise<void> {
+    if (this.checkingUpdate) {
+      return;
+    }
+
+    this.checkingUpdate = true;
+    try {
+      const context = AppContext.getContext();
+      const result = await updateManager.checkAppUpdate(context);
+      if (result.updateAvailable === updateManager.UpdateAvailableCode.LATER_VERSION_EXIST) {
+        const showResult = await updateManager.showUpdateDialog(context);
+        if (showResult === updateManager.ShowUpdateResultCode.SHOW_DIALOG_SUCCESS) {
+          promptAction.showToast({ message: '已打开应用商店更新页' });
+        } else {
+          promptAction.showToast({ message: '更新页打开失败' });
+        }
+        return;
+      }
+
+      promptAction.showToast({ message: '当前已是最新版本' });
+    } catch (error) {
+      promptAction.showToast({ message: '检测更新失败，请稍后重试' });
+    } finally {
+      this.checkingUpdate = false;
+    }
   }
 
   @Builder
-  MenuItem(mark: string, title: string, desc: string, danger: boolean, onClick: () => void) {
+  MenuItem(mark: string, title: string, desc: string, danger: boolean, onClick: () => void, disabled: boolean = false) {
     Row({ space: 12 }) {
       Text(mark)
         .width(34)
@@ -43,13 +75,19 @@ export struct MinePage {
       }
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start)
-      Text('›')
-        .fontSize(24)
+      Text('>')
+        .fontSize(18)
         .fontColor('#A1ABC0')
     }
     .width('100%')
     .height(70)
-    .onClick(onClick)
+    .opacity(disabled ? 0.55 : 1)
+    .enabled(!disabled)
+    .onClick(() => {
+      if (!disabled) {
+        onClick();
+      }
+    })
   }
 
   build() {
@@ -115,9 +153,9 @@ export struct MinePage {
             .fontColor(TEXT_PRIMARY)
             .width('100%')
           Column() {
-            this.MenuItem('?', '使用说明', '选择工具、添加文件、设置参数后开始处理，结果可保存到系统文件位置。', false, () => promptAction.showToast({ message: '使用说明页面占位' }))
-            this.MenuItem('i', '隐私说明', '文件优先在本机沙箱处理，服务端能力接入前不会上传转换文件。', false, () => promptAction.showToast({ message: '隐私说明页面占位' }))
-            this.MenuItem('FB', '意见反馈', '反馈入口占位，后续可接入邮件、客服或表单。', false, () => promptAction.showToast({ message: '意见反馈入口待接入' }))
+            this.MenuItem('?', '使用说明', '查看完整操作流程、文件选择、保存方式和常见使用习惯。', false, () => this.onOpenUsage())
+            this.MenuItem('i', '隐私说明', '了解文件处理边界、权限使用、数据留存和鸿蒙隐私要求。', false, () => this.onOpenPrivacy())
+            this.MenuItem('更', this.checkingUpdate ? '正在检测更新' : '检测更新', '检查新版本并跳转到应用商店更新。', false, () => this.checkUpdate(), this.checkingUpdate)
           }
           .width('100%')
           .padding({ left: 14, right: 14 })

@@ -1,4 +1,4 @@
-import { promptAction } from '@kit.ArkUI';
+import { promptAction, router } from '@kit.ArkUI';
 import { PAGE_BG, PRIMARY_COLOR, TEXT_MUTED, TEXT_PRIMARY, TOOL_CONFIGS, TOOLS, getConfigByToolId, getToolById } from '../../constants/AppConstants';
 import { FilePickerPanel } from '../../components/FilePickerPanel';
 import { ResultPanel } from '../../components/ResultPanel';
@@ -9,10 +9,15 @@ import { HistoryService } from '../../services/HistoryService';
 import { ProcessorRegistry } from '../../processors/ProcessorRegistry';
 import { formatFileSize, generateId, normalizeOutputFileName, nowText } from '../../utils/FormatUtils';
 
+interface ToolRunnerRouteParams {
+  toolId?: string;
+}
+
+@Entry
 @Component
-export struct ToolRunnerPage {
-  toolId: string = 'text-to-pdf';
-  onBack: () => void = () => {};
+struct ToolRunnerPage {
+  @State toolId: string = 'text-to-pdf';
+  onBack: () => void = () => router.back();
 
   @State files: PickedFile[] = [];
   @State inputText: string = '';
@@ -25,6 +30,10 @@ export struct ToolRunnerPage {
   @State error: string = '';
 
   aboutToAppear(): void {
+    const params = router.getParams() as ToolRunnerRouteParams;
+    if (params && params.toolId && params.toolId.length > 0) {
+      this.toolId = params.toolId;
+    }
     this.initSettings();
   }
 
@@ -57,6 +66,13 @@ export struct ToolRunnerPage {
   private settingValue(key: string): SettingValue {
     const item = this.settings.get(key);
     return item === undefined ? '' : item;
+  }
+
+  private errText(err: Error | Object): string {
+    if (err instanceof Error) {
+      return err.message;
+    }
+    return JSON.stringify(err);
   }
 
   private pickTitle(): string {
@@ -95,10 +111,19 @@ export struct ToolRunnerPage {
       } else {
         picked = await FileService.pickDocuments(config.multiple ? remaining : 1, config.pickMode === 'text' ? ['txt'] : this.tool().acceptTypes);
       }
+      if (picked.length === 0) {
+        promptAction.showToast({ message: '未选择文件' });
+        return;
+      }
+      if (config.pickMode === 'text' && !this.inputText.trim()) {
+        this.inputText = FileService.readText(picked[0]);
+      }
       this.files = config.multiple ? this.files.concat(picked).slice(0, maxCount) : picked.slice(0, 1);
+      this.progressLabel = `已选择 ${this.files.length} 个文件`;
       this.result = undefined;
+      promptAction.showToast({ message: `已选择 ${picked.length} 个文件` });
     } catch (err) {
-      promptAction.showToast({ message: `选择失败：${JSON.stringify(err)}` });
+      promptAction.showToast({ message: `选择失败：${this.errText(err as Error | Object)}` });
     }
   }
 
@@ -207,7 +232,7 @@ export struct ToolRunnerPage {
       await FileService.saveToPicker(this.result.path, this.result.name);
       promptAction.showToast({ message: '保存成功' });
     } catch (err) {
-      promptAction.showToast({ message: `保存失败：${JSON.stringify(err)}` });
+      promptAction.showToast({ message: `保存失败：${this.errText(err as Error | Object)}` });
     }
   }
 
@@ -236,7 +261,7 @@ export struct ToolRunnerPage {
         .alignItems(HorizontalAlign.Start)
       }
       .width('100%')
-      .padding({ left: 16, right: 16, top: 44, bottom: 10 })
+      .padding({ left: 16, right: 16, top: 18, bottom: 10 })
       .backgroundColor(PAGE_BG)
 
       Scroll() {
@@ -267,6 +292,33 @@ export struct ToolRunnerPage {
                 .fontColor(PRIMARY_COLOR)
                 .backgroundColor('#EEF3FF')
                 .onClick(() => this.pickFiles())
+              if (this.files.length > 0) {
+                Row({ space: 10 }) {
+                  Column({ space: 4 }) {
+                    Text(this.files[0].name)
+                      .fontSize(13)
+                      .fontWeight(FontWeight.Bold)
+                      .fontColor(TEXT_PRIMARY)
+                      .maxLines(1)
+                      .textOverflow({ overflow: TextOverflow.Ellipsis })
+                    Text(`已读取 TXT · ${formatFileSize(this.files[0].size)}`)
+                      .fontSize(11)
+                      .fontColor(TEXT_MUTED)
+                  }
+                  .layoutWeight(1)
+                  .alignItems(HorizontalAlign.Start)
+                  Button('移除')
+                    .height(34)
+                    .fontSize(12)
+                    .fontColor('#D92D20')
+                    .backgroundColor('#FFF0F0')
+                    .onClick(() => this.removeFile(0))
+                }
+                .width('100%')
+                .padding(10)
+                .borderRadius(8)
+                .backgroundColor('#F5F7FC')
+              }
             } else {
               FilePickerPanel({
                 title: this.pickTitle(),

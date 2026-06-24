@@ -4,23 +4,28 @@ import { photoAccessHelper } from '@kit.MediaLibraryKit';
 import { PickedFile, SavedFile } from '../models/ToolModels';
 import { concatBytes, getExt, generateId, textToBytes } from '../utils/FormatUtils';
 import { AppContext } from './AppContext';
+import { PermissionService } from './PermissionService';
 
 const TEMP_DIR_NAME = 'pdf_toolbox';
 const MAX_FILE_SIZE = 80 * 1024 * 1024;
 
-function normalizeName(uri: string, index: number): string {
+function normalizeName(uri: string, index: number, fallbackExt: string = ''): string {
   const clean = uri.split('?')[0];
   const slashParts = clean.split('/');
   const raw = slashParts[slashParts.length - 1] || `文件${index + 1}`;
+  let name = raw;
   try {
-    return decodeURIComponent(raw);
+    name = decodeURIComponent(raw);
   } catch (_) {
-    return raw;
   }
+  if (fallbackExt.length > 0 && getExt(name).length === 0) {
+    return `${name}.${fallbackExt}`;
+  }
+  return name;
 }
 
-function normalizeFile(uri: string, index: number): PickedFile {
-  const name = normalizeName(uri, index);
+function normalizeFile(uri: string, index: number, fallbackExt: string = ''): PickedFile {
+  const name = normalizeName(uri, index, fallbackExt);
   let size = 0;
   try {
     const file = fileIo.openSync(uri, fileIo.OpenMode.READ_ONLY);
@@ -30,7 +35,7 @@ function normalizeFile(uri: string, index: number): PickedFile {
   } catch (_) {
     size = 0;
   }
-  const ext = getExt(name);
+  const ext = getExt(name) || fallbackExt;
   return {
     id: generateId('file'),
     name: name || `文件${index + 1}`,
@@ -43,7 +48,8 @@ function normalizeFile(uri: string, index: number): PickedFile {
 
 function validate(files: PickedFile[], acceptTypes: string[]): void {
   if (acceptTypes.length > 0) {
-    const invalid = files.find((file: PickedFile) => !acceptTypes.includes(file.ext));
+    const normalizedTypes = acceptTypes.map((item: string) => item.toLowerCase());
+    const invalid = files.find((file: PickedFile) => file.ext.length > 0 && !normalizedTypes.includes(file.ext));
     if (invalid) {
       throw new Error(`文件格式不支持：${invalid.name}`);
     }
@@ -70,6 +76,7 @@ function ensureTempDir(): string {
 
 export class FileService {
   static async pickDocuments(count: number, acceptTypes: string[]): Promise<PickedFile[]> {
+    await PermissionService.ensureDocumentReadPermission();
     const documentPicker = new picker.DocumentViewPicker();
     const options = new picker.DocumentSelectOptions();
     options.maxSelectNumber = count;
@@ -77,18 +84,20 @@ export class FileService {
       options.fileSuffixFilters = acceptTypes.map((item: string) => `.${item}`);
     }
     const uris = await documentPicker.select(options);
-    const files = uris.map((uri: string, index: number) => normalizeFile(uri, index));
+    const fallbackExt = acceptTypes.length === 1 ? acceptTypes[0].toLowerCase() : '';
+    const files = uris.map((uri: string, index: number) => normalizeFile(uri, index, fallbackExt));
     validate(files, acceptTypes);
     return files;
   }
 
   static async pickImages(count: number): Promise<PickedFile[]> {
+    await PermissionService.ensureImageReadPermission();
     const photoPicker = new photoAccessHelper.PhotoViewPicker();
     const options = new photoAccessHelper.PhotoSelectOptions();
     options.MIMEType = photoAccessHelper.PhotoViewMIMETypes.IMAGE_TYPE;
     options.maxSelectNumber = count;
     const result = await photoPicker.select(options);
-    const files = result.photoUris.map((uri: string, index: number) => normalizeFile(uri, index));
+    const files = result.photoUris.map((uri: string, index: number) => normalizeFile(uri, index, 'jpg'));
     validate(files, ['jpg', 'jpeg', 'png']);
     return files;
   }

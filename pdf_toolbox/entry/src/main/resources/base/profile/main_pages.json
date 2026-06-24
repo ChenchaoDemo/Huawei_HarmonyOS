@@ -1,5 +1,9 @@
 {
   "src": [
-    "pages/Index"
+    "pages/Index",
+    "pages/main/ToolRunnerPage",
+    "pages/main/DocumentScanPage",
+    "pages/guide/UsageGuidePage",
+    "pages/guide/PrivacyGuidePage"
   ]
 }

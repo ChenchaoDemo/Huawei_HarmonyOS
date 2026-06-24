@@ -17,8 +17,7 @@
 - `components/ToolRunner.vue`：通用工具详情流程，覆盖文件选择、参数设置、处理进度、错误、结果、历史。
 - `ToolCard.vue`、`CategorySection.vue`：工具卡片和分类网格。
 - `FilePicker.vue`、`ResultPanel.vue`、`ProcessPanel.vue`、`SettingRow.vue`：选择文件、结果操作、参数容器、动态设置控件。
-- `pages/index`：品牌区、搜索、最近使用、热门工具。
-- `pages/tools`：按分类展示全部工具。
+- `pages/index`：品牌区、搜索、分类筛选、最近使用、热门工具、全部分类工具。
 - `pages/history`：处理历史，支持预览、分享、删除、清空。
 - `pages/mine`：工具/记录统计、说明、隐私、反馈、清理、关于。
 - `pages/scan/document-scan.vue`：特殊扫描体验，含拍照/相册、多图排序删除、PDF 设置、水印设置和生成扫描 PDF。
@@ -28,16 +27,16 @@
 - `entry/src/main/ets/models`：`ToolMeta`、`ToolConfig`、`ProcessorResult`、历史记录等模型。
 - `entry/src/main/ets/constants`：工具分类、工具清单、参数配置和主题色。
 - `entry/src/main/ets/components`：ArkUI 工具卡片、分类区、文件选择、设置行、结果面板。
-- `entry/src/main/ets/pages/main`：首页、工具页、记录页、我的页、通用工具详情页、文件扫描页。
+- `entry/src/main/ets/pages/main`：首页、记录页、我的页、通用工具详情页、文件扫描页。
 - `entry/src/main/ets/services`：`FileService`、`HistoryService`、`AppContext`。
 - `entry/src/main/ets/processors`：文本、图片、PDF 轻量处理器、远程转换占位适配器。
-- `entry/src/main/ets/pages/Index.ets`：`Navigation + Tabs` 单入口，四 Tab 和工具详情切换。
+- `entry/src/main/ets/pages/Index.ets`：`Navigation + Tabs` 单入口，三 Tab 和工具详情切换。
 
 ## 已完成能力
 
-- 底部四 Tab：首页、工具、记录、我的。
-- 首页品牌区、搜索、最近使用、热门工具。
-- 工具页按分类展示全部工具，覆盖需求中的 21 个工具入口。
+- 底部三 Tab：首页、记录、我的。
+- 首页品牌区、搜索、分类筛选、最近使用、热门工具、全部分类工具。
+- 首页整合全部工具入口，覆盖需求中的 21 个工具。
 - 通用工具详情页：文件/图片/TXT 选择、输出文件名、动态参数、开始处理、进度、错误、成功结果、保存、分享占位、历史记录。
 - 记录页：读取历史、保存到系统文件位置、打开路径提示、分享占位、删除、清空。
 - 我的页：工具数量、记录数量、使用说明、隐私说明、意见反馈占位、文件清理、关于。

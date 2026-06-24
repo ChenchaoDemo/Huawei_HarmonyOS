@@ -1,4 +1,4 @@
-import { promptAction } from '@kit.ArkUI';
+import { promptAction, router } from '@kit.ArkUI';
 import { PAGE_BG, PRIMARY_COLOR, TEXT_MUTED, TEXT_PRIMARY } from '../../constants/AppConstants';
 import { ResultPanel } from '../../components/ResultPanel';
 import { PickedFile, ProcessResultView, ProcessorRequest, SettingMap, SettingValue } from '../../models/ToolModels';
@@ -7,9 +7,10 @@ import { HistoryService } from '../../services/HistoryService';
 import { documentScan } from '../../processors/ImageProcessor';
 import { formatFileSize, generateId, normalizeOutputFileName, nowText } from '../../utils/FormatUtils';
 
+@Entry
 @Component
-export struct DocumentScanPage {
-  onBack: () => void = () => {};
+struct DocumentScanPage {
+  onBack: () => void = () => router.back();
   @State files: PickedFile[] = [];
   @State outputName: string = '';
   @State settings: SettingMap = new Map<string, SettingValue>([
@@ -39,14 +40,32 @@ export struct DocumentScanPage {
     return item === undefined ? '' : item;
   }
 
+  private errText(err: Error | Object): string {
+    if (err instanceof Error) {
+      return err.message;
+    }
+    return JSON.stringify(err);
+  }
+
   async pickImages(): Promise<void> {
     try {
-      const picked = await FileService.pickImages(9);
-      this.files = this.files.concat(picked);
+      const remaining = 9 - this.files.length;
+      if (remaining <= 0) {
+        promptAction.showToast({ message: '最多选择 9 张图片' });
+        return;
+      }
+      const picked = await FileService.pickImages(remaining);
+      if (picked.length === 0) {
+        promptAction.showToast({ message: '未选择图片' });
+        return;
+      }
+      this.files = this.files.concat(picked).slice(0, 9);
       this.result = undefined;
       this.error = '';
+      this.progressLabel = `已选择 ${this.files.length} 张图片`;
+      promptAction.showToast({ message: `已选择 ${picked.length} 张图片` });
     } catch (err) {
-      promptAction.showToast({ message: `图片选择失败：${JSON.stringify(err)}` });
+      promptAction.showToast({ message: `图片选择失败：${this.errText(err as Error | Object)}` });
     }
   }
 
@@ -141,7 +160,7 @@ export struct DocumentScanPage {
       await FileService.saveToPicker(this.result.path, this.result.name);
       promptAction.showToast({ message: '保存成功' });
     } catch (err) {
-      promptAction.showToast({ message: `保存失败：${JSON.stringify(err)}` });
+      promptAction.showToast({ message: `保存失败：${this.errText(err as Error | Object)}` });
     }
   }
 
@@ -202,7 +221,7 @@ export struct DocumentScanPage {
         .alignItems(HorizontalAlign.Start)
       }
       .width('100%')
-      .padding({ left: 16, right: 16, top: 44, bottom: 10 })
+      .padding({ left: 16, right: 16, top: 18, bottom: 10 })
 
       Scroll() {
         Column({ space: 16 }) {
