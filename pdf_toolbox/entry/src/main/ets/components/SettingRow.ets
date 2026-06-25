@@ -82,8 +82,8 @@ export struct SettingRow {
         .width('100%')
       }
 
-      if (this.setting.hint) {
-        Text(this.setting.hint)
+      if (this.setting.dynamicHint || this.setting.hint) {
+        Text(this.setting.dynamicHint || this.setting.hint || '')
           .fontSize(12)
           .lineHeight(17)
           .fontColor(TEXT_MUTED)

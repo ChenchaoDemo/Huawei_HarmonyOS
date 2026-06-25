@@ -7,6 +7,8 @@ export struct FilePickerPanel {
   @Prop title: string = '选择文件';
   @Prop desc: string = '点击选择文件';
   @Prop files: PickedFile[] = [];
+  @Prop showPreview: boolean = false;
+  @Prop allowReorder: boolean = true;
   onPick: () => void = () => {};
   onPreview: (file: PickedFile) => void = () => {};
   onMove: (index: number, step: number) => void = () => {};
@@ -57,6 +59,16 @@ export struct FilePickerPanel {
         Column({ space: 10 }) {
           ForEach(this.files, (file: PickedFile, index: number) => {
             Row({ space: 10 }) {
+              if (this.showPreview) {
+                Image(file.uri)
+                  .width(56)
+                  .height(56)
+                  .objectFit(ImageFit.Cover)
+                  .borderRadius(8)
+                  .backgroundColor('#EEF3FF')
+                  .onClick(() => this.onPreview(file))
+              }
+
               Column({ space: 4 }) {
                 Text(file.name)
                   .fontSize(14)
@@ -64,7 +76,7 @@ export struct FilePickerPanel {
                   .fontColor(TEXT_PRIMARY)
                   .maxLines(1)
                   .textOverflow({ overflow: TextOverflow.Ellipsis })
-                Text(`${file.type} · ${formatFileSize(file.size)}`)
+                Text(`${file.type} | ${formatFileSize(file.size)}`)
                   .fontSize(11)
                   .fontColor(TEXT_MUTED)
               }
@@ -72,9 +84,14 @@ export struct FilePickerPanel {
               .alignItems(HorizontalAlign.Start)
 
               Row({ space: 6 }) {
-                this.MiniAction('预览', PRIMARY_COLOR, () => this.onPreview(file))
-                this.MiniAction('上移', PRIMARY_COLOR, () => this.onMove(index, -1))
-                this.MiniAction('下移', PRIMARY_COLOR, () => this.onMove(index, 1))
+                if (this.allowReorder) {
+                  if (index > 0) {
+                    this.MiniAction('上移', PRIMARY_COLOR, () => this.onMove(index, -1))
+                  }
+                  if (index < this.files.length - 1) {
+                    this.MiniAction('下移', PRIMARY_COLOR, () => this.onMove(index, 1))
+                  }
+                }
                 this.MiniAction('删除', '#D92D20', () => this.onRemove(index))
               }
             }

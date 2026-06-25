@@ -4,6 +4,7 @@ import { FilePreviewRouteParams, HistoryRecord } from '../../models/ToolModels';
 import { FileService } from '../../services/FileService';
 import { HistoryService } from '../../services/HistoryService';
 import { ShareService } from '../../services/ShareService';
+import { getExt } from '../../utils/FormatUtils';
 
 class FilePreviewRouterOptions {
   url: string = '';
@@ -12,6 +13,7 @@ class FilePreviewRouterOptions {
 
 @Component
 export struct HistoryPage {
+  @Prop @Watch('onRefreshTokenChange') refreshToken: number = 0;
   @State records: HistoryRecord[] = [];
   @State keyword: string = '';
   @State selectedType: string = 'all';
@@ -25,56 +27,101 @@ export struct HistoryPage {
     this.records = await HistoryService.getRecords();
   }
 
+  private onRefreshTokenChange(): void {
+    this.refresh();
+  }
+
   private resetPaging(): void {
     this.visibleCount = 10;
   }
 
   private fileText(record: HistoryRecord): string {
-    return `${record.toolName} ${record.toolType} ${record.sourceFileName} ${record.resultFileName} ${record.status}`.toLowerCase();
+    return `${record.toolName} ${record.toolType} ${record.sourceFileName} ${record.resultFileName} ${this.typeLabel(record)} ${record.status}`.toLowerCase();
   }
 
   private resultExt(record: HistoryRecord): string {
-    const fileName = record.resultFileName.toLowerCase();
-    const dotIndex = fileName.lastIndexOf('.');
-    return dotIndex >= 0 ? fileName.substring(dotIndex + 1) : 'file';
+    const savedExt = (record.resultExt || '').replace(/^\./, '').toLowerCase();
+    if (savedExt.length > 0) {
+      return savedExt;
+    }
+
+    const nameExt = getExt(record.resultFileName);
+    if (nameExt.length > 0) {
+      return nameExt;
+    }
+
+    const pathExt = getExt(record.resultPath);
+    if (pathExt.length > 0) {
+      return pathExt;
+    }
+
+    return this.inferResultExt(record);
   }
 
-  private resultExtIn(record: HistoryRecord, extensions: string[]): boolean {
-    return extensions.includes(this.resultExt(record));
+  private inferResultExt(record: HistoryRecord): string {
+    const toolName = (record.toolName || '').toLowerCase();
+    if (toolName.includes('转图片') || toolName.includes('转长图') || toolName.includes('提取图片')) {
+      return 'png';
+    }
+    if (toolName.includes('转word')) {
+      return 'docx';
+    }
+    if (toolName.includes('转excel')) {
+      return 'xlsx';
+    }
+    if (toolName.includes('转ppt')) {
+      return 'pptx';
+    }
+    if (record.toolType === 'pdf' || record.toolType === 'toPdf' || record.toolType === 'scan' || toolName.includes('pdf')) {
+      return 'pdf';
+    }
+    return 'file';
+  }
+
+  private resultKind(record: HistoryRecord): string {
+    const ext = this.resultExt(record);
+    if (ext === 'pdf') {
+      return 'pdf';
+    }
+    if (['jpg', 'jpeg', 'png', 'webp'].includes(ext)) {
+      return 'image';
+    }
+    if (['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'csv'].includes(ext)) {
+      return 'office';
+    }
+    if (['txt', 'md', 'log'].includes(ext)) {
+      return 'text';
+    }
+    return 'other';
   }
 
   private typeLabel(record: HistoryRecord): string {
-    if (record.toolType === 'scan') {
-      return '扫描件';
-    }
-    if (this.resultExtIn(record, ['pdf'])) {
+    const kind = this.resultKind(record);
+    if (kind === 'pdf') {
       return 'PDF';
     }
-    if (this.resultExtIn(record, ['jpg', 'jpeg', 'png', 'webp'])) {
+    if (kind === 'image') {
       return '图片';
     }
-    if (this.resultExtIn(record, ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'csv'])) {
+    if (kind === 'office') {
       return 'Office';
     }
-    if (this.resultExtIn(record, ['txt', 'md', 'log'])) {
+    if (kind === 'text') {
       return '文本';
     }
     return this.resultExt(record).toUpperCase();
   }
 
   private typeColor(record: HistoryRecord): string {
-    const label = this.typeLabel(record);
-    if (label === 'PDF') {
+    const kind = this.resultKind(record);
+    if (kind === 'pdf') {
       return PRIMARY_COLOR;
     }
-    if (label === '图片') {
+    if (kind === 'image') {
       return '#1F8A5B';
     }
-    if (label === 'Office') {
+    if (kind === 'office') {
       return '#7A4DCC';
-    }
-    if (label === '扫描件') {
-      return '#0B7285';
     }
     return '#52607A';
   }
@@ -91,22 +138,7 @@ export struct HistoryPage {
     if (this.selectedType === 'all') {
       return true;
     }
-    if (this.selectedType === 'pdf') {
-      return this.resultExtIn(record, ['pdf']);
-    }
-    if (this.selectedType === 'image') {
-      return this.resultExtIn(record, ['jpg', 'jpeg', 'png', 'webp']);
-    }
-    if (this.selectedType === 'office') {
-      return this.resultExtIn(record, ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'csv']);
-    }
-    if (this.selectedType === 'text') {
-      return this.resultExtIn(record, ['txt', 'md', 'log']);
-    }
-    if (this.selectedType === 'scan') {
-      return record.toolType === 'scan';
-    }
-    return true;
+    return this.resultKind(record) === this.selectedType;
   }
 
   private filteredRecords(): HistoryRecord[] {
@@ -127,27 +159,71 @@ export struct HistoryPage {
     }
   }
 
-  async remove(id: string): Promise<void> {
+  private async removeConfirmed(id: string): Promise<void> {
     await HistoryService.removeRecord(id);
     await this.refresh();
     promptAction.showToast({ message: '已删除记录' });
   }
 
-  async clearAll(): Promise<void> {
-    if (!this.records.length) {
-      promptAction.showToast({ message: '暂无可清空的记录' });
-      return;
-    }
+  remove(record: HistoryRecord): void {
+    AlertDialog.show({
+      title: '删除记录',
+      message: `确定要删除“${record.resultFileName}”这条处理记录吗？`,
+      autoCancel: true,
+      secondaryButton: {
+        value: '取消',
+        fontColor: '#52607A',
+        action: () => {}
+      },
+      primaryButton: {
+        value: '删除',
+        fontColor: '#D92D20',
+        action: () => {
+          this.removeConfirmed(record.id);
+        }
+      }
+    });
+  }
+
+  private async clearAllConfirmed(): Promise<void> {
     await HistoryService.clearRecords();
     await this.refresh();
     this.resetPaging();
     promptAction.showToast({ message: '已清空记录' });
   }
 
+  clearAll(): void {
+    if (!this.records.length) {
+      promptAction.showToast({ message: '暂无可清空的记录' });
+      return;
+    }
+    AlertDialog.show({
+      title: '清空记录',
+      message: '确定要清空全部处理记录吗？清空后无法恢复。',
+      autoCancel: true,
+      secondaryButton: {
+        value: '取消',
+        fontColor: '#52607A',
+        action: () => {}
+      },
+      primaryButton: {
+        value: '清空',
+        fontColor: '#D92D20',
+        action: () => {
+          this.clearAllConfirmed();
+        }
+      }
+    });
+  }
+
   async saveRecordFile(record: HistoryRecord): Promise<void> {
     try {
-      await FileService.saveToPicker(record.resultPath, record.resultFileName);
-      promptAction.showToast({ message: '保存成功' });
+      const savedTo = await FileService.saveOutput(record.resultPath, record.resultFileName);
+      if (savedTo === 'album') {
+        promptAction.showToast({ message: '已保存到相册' });
+      } else if (savedTo === 'document') {
+        promptAction.showToast({ message: '保存成功' });
+      }
     } catch (error) {
       promptAction.showToast({ message: `保存失败：${JSON.stringify(error)}` });
     }
@@ -263,7 +339,7 @@ export struct HistoryPage {
           this.TypeChip('image', '图片')
           this.TypeChip('office', 'Office')
           this.TypeChip('text', '文本')
-          this.TypeChip('scan', '扫描件')
+          this.TypeChip('other', '其他')
         }
         .padding({ right: 16 })
       }
@@ -295,7 +371,7 @@ export struct HistoryPage {
         Column({ space: 6 }) {
           Row({ space: 8 }) {
             Text(record.resultFileName)
-              .fontSize(16)
+              .fontSize(14)
               .fontWeight(FontWeight.Bold)
               .fontColor(TEXT_PRIMARY)
               .layoutWeight(1)
@@ -329,13 +405,6 @@ export struct HistoryPage {
               .fontColor(TEXT_MUTED)
           }
           .width('100%')
-
-          Text(`来源：${record.sourceFileName}`)
-            .fontSize(11)
-            .fontColor(TEXT_MUTED)
-            .maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
-            .width('100%')
         }
         .layoutWeight(1)
         .alignItems(HorizontalAlign.Start)
@@ -346,7 +415,7 @@ export struct HistoryPage {
         this.ActionButton('预览', PRIMARY_COLOR, '#EAF1FF', () => this.openRecordPreview(record))
         this.ActionButton('保存', '#FFFFFF', PRIMARY_COLOR, () => this.saveRecordFile(record))
         this.ActionButton('分享', PRIMARY_COLOR, '#EAF1FF', () => this.shareRecordFile(record))
-        this.ActionButton('删除', '#D92D20', '#FFF0F0', () => this.remove(record.id))
+        this.ActionButton('删除', '#D92D20', '#FFF0F0', () => this.remove(record))
       }
       .width('100%')
     }
@@ -400,51 +469,48 @@ export struct HistoryPage {
   }
 
   build() {
-    List({ space: 12 }) {
-      ListItem() {
-        this.Header()
-      }
+    Column({ space: 12 }) {
+      this.Header()
+      this.SearchPanel()
 
-      ListItem() {
-        this.SearchPanel()
+      Row() {
+        Text('最近处理')
+          .fontSize(18)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(TEXT_PRIMARY)
+        Text(`默认展示最近 ${Math.min(10, this.filteredRecords().length)} 条`)
+          .fontSize(12)
+          .fontColor(TEXT_MUTED)
+          .layoutWeight(1)
+          .textAlign(TextAlign.End)
       }
+      .width('100%')
 
-      ListItem() {
-        Row() {
-          Text('最近处理')
-            .fontSize(18)
-            .fontWeight(FontWeight.Bold)
-            .fontColor(TEXT_PRIMARY)
-          Text(`默认展示最近 ${Math.min(10, this.filteredRecords().length)} 条`)
-            .fontSize(12)
-            .fontColor(TEXT_MUTED)
-            .layoutWeight(1)
-            .textAlign(TextAlign.End)
-        }
-        .width('100%')
-      }
-
-      if (this.visibleRecords().length > 0) {
-        ForEach(this.visibleRecords(), (record: HistoryRecord) => {
+      List({ space: 12 }) {
+        if (this.visibleRecords().length > 0) {
+          ForEach(this.visibleRecords(), (record: HistoryRecord) => {
+            ListItem() {
+              this.RecordCard(record)
+            }
+          }, (record: HistoryRecord) => record.id)
+        } else {
           ListItem() {
-            this.RecordCard(record)
+            this.EmptyState()
           }
-        }, (record: HistoryRecord) => record.id)
-      } else {
+        }
+
         ListItem() {
-          this.EmptyState()
+          this.Footer()
         }
       }
-
-      ListItem() {
-        this.Footer()
-      }
+      .width('100%')
+      .layoutWeight(1)
+      .scrollBar(BarState.Off)
+      .onReachEnd(() => this.loadMore())
     }
     .width('100%')
     .height('100%')
     .padding({ left: 16, right: 16, top: 34, bottom: 16 })
     .backgroundColor(PAGE_BG)
-    .scrollBar(BarState.Off)
-    .onReachEnd(() => this.loadMore())
   }
 }

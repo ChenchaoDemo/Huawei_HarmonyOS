@@ -1,6 +1,6 @@
 import { ProcessorRequest, ProcessorResult } from '../models/ToolModels';
 import { textToPdf } from './TextProcessor';
-import { documentScan, imagesToPdf, scanImage } from './ImageProcessor';
+import { convertImageFormat, documentScan, imagesToPdf, scanImage } from './ImageProcessor';
 import { deletePdfPages, mergePdf, reorderPdfPages, splitPdf, watermarkPdf } from './PdfProcessor';
 import { remoteOffice, remotePdf } from './RemoteProcessor';
 
@@ -9,6 +9,7 @@ export type Processor = (request: ProcessorRequest) => Promise<ProcessorResult>;
 const PROCESSORS: Map<string, Processor> = new Map<string, Processor>([
   ['textToPdf', textToPdf],
   ['imagesToPdf', imagesToPdf],
+  ['convertImageFormat', convertImageFormat],
   ['scanImage', scanImage],
   ['documentScan', documentScan],
   ['mergePdf', mergePdf],

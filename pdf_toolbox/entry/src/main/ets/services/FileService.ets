@@ -1,8 +1,9 @@
 import { picker } from '@kit.CoreFileKit';
-import { fileIo } from '@kit.CoreFileKit';
+import { fileIo, fileUri } from '@kit.CoreFileKit';
 import { photoAccessHelper } from '@kit.MediaLibraryKit';
 import { PickedFile, SavedFile } from '../models/ToolModels';
-import { concatBytes, getExt, generateId, textToBytes } from '../utils/FormatUtils';
+import { isImageExt } from '../constants/ImageFormatConstants';
+import { concatBytes, fileStem, getExt, generateId, textToBytes } from '../utils/FormatUtils';
 import { AppContext } from './AppContext';
 import { PermissionService } from './PermissionService';
 
@@ -90,15 +91,16 @@ export class FileService {
     return files;
   }
 
-  static async pickImages(count: number): Promise<PickedFile[]> {
+  static async pickImages(count: number, acceptTypes: string[] = ['jpg', 'jpeg', 'png']): Promise<PickedFile[]> {
     await PermissionService.ensureImageReadPermission();
     const photoPicker = new photoAccessHelper.PhotoViewPicker();
     const options = new photoAccessHelper.PhotoSelectOptions();
     options.MIMEType = photoAccessHelper.PhotoViewMIMETypes.IMAGE_TYPE;
     options.maxSelectNumber = count;
     const result = await photoPicker.select(options);
-    const files = result.photoUris.map((uri: string, index: number) => normalizeFile(uri, index, 'jpg'));
-    validate(files, ['jpg', 'jpeg', 'png']);
+    const fallbackExt = acceptTypes.includes('jpg') ? 'jpg' : (acceptTypes[0] || 'jpg');
+    const files = result.photoUris.map((uri: string, index: number) => normalizeFile(uri, index, fallbackExt));
+    validate(files, acceptTypes);
     return files;
   }
 
@@ -140,13 +142,13 @@ export class FileService {
     return { name: fileName, path, size: bytes.length };
   }
 
-  static async saveToPicker(path: string, fileName: string): Promise<void> {
+  static async saveToPicker(path: string, fileName: string): Promise<boolean> {
     const documentPicker = new picker.DocumentViewPicker();
     const options = new picker.DocumentSaveOptions();
     options.newFileNames = [fileName];
     const targetUris = await documentPicker.save(options);
     if (!targetUris.length) {
-      return;
+      return false;
     }
     const bytes = FileService.readFile({ id: 'saved', name: fileName, uri: path, size: 0, ext: getExt(fileName), type: 'FILE' });
     const opened = fileIo.openSync(targetUris[0], fileIo.OpenMode.CREATE | fileIo.OpenMode.TRUNC | fileIo.OpenMode.READ_WRITE);
@@ -155,6 +157,37 @@ export class FileService {
     } finally {
       fileIo.closeSync(opened);
     }
+    return true;
+  }
+
+  static async saveImageToAlbum(path: string, fileName: string): Promise<boolean> {
+    const helper = photoAccessHelper.getPhotoAccessHelper(AppContext.getContext());
+    const sourceUri = fileUri.getUriFromPath(path);
+    const ext = getExt(fileName) || 'jpg';
+    const title = fileStem(fileName) || 'image';
+    const created = await helper.showAssetsCreationDialog([sourceUri], [{
+      title,
+      fileNameExtension: ext,
+      photoType: photoAccessHelper.PhotoType.IMAGE
+    }]);
+    return created.length > 0;
+  }
+
+  static async saveOutput(path: string, fileName: string): Promise<'album' | 'document' | ''> {
+    if (isImageExt(getExt(fileName))) {
+      try {
+        const savedToAlbum = await FileService.saveImageToAlbum(path, fileName);
+        if (savedToAlbum) {
+          return 'album';
+        }
+        return '';
+      } catch (_) {
+        const savedToPicker = await FileService.saveToPicker(path, fileName);
+        return savedToPicker ? 'document' : '';
+      }
+    }
+    const savedToPicker = await FileService.saveToPicker(path, fileName);
+    return savedToPicker ? 'document' : '';
   }
 
   static clearTempFiles(): void {

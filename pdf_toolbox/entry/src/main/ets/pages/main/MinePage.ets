@@ -1,26 +1,40 @@
 import { promptAction } from '@kit.ArkUI';
 import { updateManager } from '@kit.AppGalleryKit';
-import { APP_NAME, PAGE_BG, PRIMARY_COLOR, PURPLE_COLOR, TEXT_MUTED, TEXT_PRIMARY, TOOLS } from '../../constants/AppConstants';
+import { APP_NAME, PAGE_BG, PRIMARY_COLOR, PURPLE_COLOR, TEXT_MUTED, TEXT_PRIMARY } from '../../constants/AppConstants';
 import { AppContext } from '../../services/AppContext';
 import { FileService } from '../../services/FileService';
 import { HistoryService } from '../../services/HistoryService';
 
 @Component
 export struct MinePage {
-  @State recordCount: number = 0;
   @State checkingUpdate: boolean = false;
   onOpenUsage: () => void = () => {};
   onOpenPrivacy: () => void = () => {};
 
-  async aboutToAppear(): Promise<void> {
-    this.recordCount = (await HistoryService.getRecords()).length;
-  }
-
-  async cleanFiles(): Promise<void> {
+  private async cleanFilesConfirmed(): Promise<void> {
     FileService.clearTempFiles();
     await HistoryService.clearRecords();
-    this.recordCount = 0;
     promptAction.showToast({ message: '已清理缓存和处理记录' });
+  }
+
+  cleanFiles(): void {
+    AlertDialog.show({
+      title: '文件清理',
+      message: '确定要清理缓存、临时文件和处理记录吗？清理后无法恢复。',
+      autoCancel: true,
+      secondaryButton: {
+        value: '取消',
+        fontColor: '#52607A',
+        action: () => {}
+      },
+      primaryButton: {
+        value: '清理',
+        fontColor: '#D92D20',
+        action: () => {
+          this.cleanFilesConfirmed();
+        }
+      }
+    });
   }
 
   async checkUpdate(): Promise<void> {
@@ -116,30 +130,6 @@ export struct MinePage {
             .layoutWeight(1)
             .alignItems(HorizontalAlign.Start)
           }
-
-          Row() {
-            Column({ space: 6 }) {
-              Text(`${TOOLS.length}`)
-                .fontSize(24)
-                .fontWeight(FontWeight.Bold)
-                .fontColor(Color.White)
-              Text('工具数量')
-                .fontSize(12)
-                .fontColor('#EAF1FF')
-            }
-            .layoutWeight(1)
-            Column({ space: 6 }) {
-              Text(`${this.recordCount}`)
-                .fontSize(24)
-                .fontWeight(FontWeight.Bold)
-                .fontColor(Color.White)
-              Text('处理记录')
-                .fontSize(12)
-                .fontColor('#EAF1FF')
-            }
-            .layoutWeight(1)
-          }
-          .width('100%')
         }
         .width('100%')
         .padding(18)

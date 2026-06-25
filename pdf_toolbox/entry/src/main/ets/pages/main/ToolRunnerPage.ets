@@ -1,5 +1,6 @@
 import { promptAction, router } from '@kit.ArkUI';
 import { PAGE_BG, PRIMARY_COLOR, TEXT_MUTED, TEXT_PRIMARY, TOOL_CONFIGS, TOOLS, getConfigByToolId, getToolById } from '../../constants/AppConstants';
+import { imageFormatExt, imageFormatHint } from '../../constants/ImageFormatConstants';
 import { FilePickerPanel } from '../../components/FilePickerPanel';
 import { ResultPanel } from '../../components/ResultPanel';
 import { SettingRow } from '../../components/SettingRow';
@@ -69,6 +70,10 @@ struct ToolRunnerPage {
     const next: SettingMap = new Map<string, SettingValue>(this.settings);
     next.set(key, value);
     this.settings = next;
+    if (this.toolId === 'image-format-convert') {
+      this.result = undefined;
+      this.refreshDefaultOutputName();
+    }
   }
 
   private settingValue(key: string): SettingValue {
@@ -84,6 +89,9 @@ struct ToolRunnerPage {
   }
 
   private outputExt(): string {
+    if (this.toolId === 'image-format-convert') {
+      return imageFormatExt(String(this.settingValue('format')), 'png');
+    }
     return this.config().resultExt || 'pdf';
   }
 
@@ -168,6 +176,41 @@ struct ToolRunnerPage {
     return types.length ? `支持 ${types.join('、')} 格式` : '点击选择文件';
   }
 
+  private canPreviewPickedFiles(): boolean {
+    const mode = this.config().pickMode;
+    return mode === 'image' || mode === 'camera';
+  }
+
+  private canReorderPickedFiles(): boolean {
+    if (this.toolId === 'image-format-convert') {
+      return false;
+    }
+    return this.config().multiple;
+  }
+
+  private dynamicSetting(setting: ToolSetting): ToolSetting {
+    if (this.toolId !== 'image-format-convert') {
+      return setting;
+    }
+    if (setting.key === 'format') {
+      const nextSetting: ToolSetting = {
+        key: setting.key,
+        label: setting.label,
+        type: setting.type,
+        placeholder: setting.placeholder,
+        hint: setting.hint,
+        dynamicHint: imageFormatHint(String(this.settingValue('format'))),
+        value: setting.value,
+        min: setting.min,
+        max: setting.max,
+        step: setting.step,
+        options: setting.options
+      };
+      return nextSetting;
+    }
+    return setting;
+  }
+
   async pickFiles(): Promise<void> {
     try {
       this.error = '';
@@ -180,7 +223,7 @@ struct ToolRunnerPage {
       }
       let picked: PickedFile[] = [];
       if (config.pickMode === 'image' || config.pickMode === 'camera') {
-        picked = await FileService.pickImages(remaining);
+        picked = await FileService.pickImages(remaining, this.tool().acceptTypes);
       } else {
         picked = await FileService.pickDocuments(config.multiple ? remaining : 1, config.pickMode === 'text' ? ['txt'] : this.tool().acceptTypes);
       }
@@ -267,7 +310,7 @@ struct ToolRunnerPage {
       };
       const output = await processor(request);
       await this.tick('正在生成结果', 72);
-      const ext = output.ext || config.resultExt || 'pdf';
+      const ext = output.ext || this.outputExt();
       const fileName = normalizeOutputFileName(this.outputName, this.tool().name, ext);
       const saved = FileService.saveTempFile(output.content, fileName);
       await this.tick('正在保存临时文件', 92);
@@ -285,6 +328,7 @@ struct ToolRunnerPage {
         toolType: this.tool().category,
         sourceFileName: this.files.map((file: PickedFile) => file.name).join('、') || '手动输入内容',
         resultFileName: fileName,
+        resultExt: ext.toLowerCase(),
         resultPath: saved.path,
         fileSize: formatFileSize(saved.size),
         status: '处理成功',
@@ -306,8 +350,12 @@ struct ToolRunnerPage {
       return;
     }
     try {
-      await FileService.saveToPicker(this.result.path, this.result.name);
-      promptAction.showToast({ message: '保存成功' });
+      const savedTo = await FileService.saveOutput(this.result.path, this.result.name);
+      if (savedTo === 'album') {
+        promptAction.showToast({ message: '已保存到相册' });
+      } else if (savedTo === 'document') {
+        promptAction.showToast({ message: '保存成功' });
+      }
     } catch (err) {
       promptAction.showToast({ message: `保存失败：${this.errText(err as Error | Object)}` });
     }
@@ -431,12 +479,6 @@ struct ToolRunnerPage {
                   }
                   .layoutWeight(1)
                   .alignItems(HorizontalAlign.Start)
-                  Button('预览')
-                    .height(34)
-                    .fontSize(12)
-                    .fontColor(PRIMARY_COLOR)
-                    .backgroundColor('#EAF1FF')
-                    .onClick(() => this.openPickedFilePreview(this.files[0]))
                   Button('移除')
                     .height(34)
                     .fontSize(12)
@@ -454,6 +496,8 @@ struct ToolRunnerPage {
                 title: this.pickTitle(),
                 desc: this.pickDesc(),
                 files: this.files,
+                showPreview: this.canPreviewPickedFiles(),
+                allowReorder: this.canReorderPickedFiles(),
                 onPick: () => this.pickFiles(),
                 onPreview: (file: PickedFile) => this.openPickedFilePreview(file),
                 onMove: (index: number, step: number) => this.moveFile(index, step),
@@ -497,19 +541,11 @@ struct ToolRunnerPage {
               if (this.config().settings.length > 0) {
                 ForEach(this.config().settings, (setting: ToolSetting) => {
                   SettingRow({
-                    setting,
+                    setting: this.dynamicSetting(setting),
                     value: this.settingValue(setting.key),
                     onValueChange: (key: string, value: SettingValue) => this.setSetting(key, value)
                   })
                 }, (setting: ToolSetting) => setting.key)
-              } else {
-                Text('当前工具没有额外处理参数。')
-                  .width('100%')
-                  .padding(14)
-                  .fontSize(13)
-                  .fontColor(TEXT_MUTED)
-                  .borderRadius(8)
-                  .backgroundColor('#F6F8FC')
               }
             }
             .width('100%')

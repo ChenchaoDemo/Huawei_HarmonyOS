@@ -1,4 +1,5 @@
 import { CategoryMeta, ToolConfig, ToolMeta } from '../models/ToolModels';
+import { IMAGE_CONVERT_ACCEPT_TYPES, IMAGE_FORMAT_OPTION_LABELS } from './ImageFormatConstants';
 
 export const APP_NAME: string = '文件处理工具箱';
 export const PRIMARY_COLOR: string = '#2667FF';
@@ -35,8 +36,9 @@ export const TOOLS: ToolMeta[] = [
   { id: 'pdf-to-excel', name: 'PDF转Excel', desc: '需接入服务端转换能力', category: 'fromPdf', iconText: 'XLS', path: 'pdf-to/excel', hot: false, acceptTypes: ['pdf'] },
   { id: 'pdf-to-ppt', name: 'PDF转PPT', desc: '需接入服务端转换能力', category: 'fromPdf', iconText: 'PPT', path: 'pdf-to/ppt', hot: false, acceptTypes: ['pdf'] },
   { id: 'pdf-to-images', name: 'PDF转图片', desc: '需接入 PDF 渲染能力后支持', category: 'fromPdf', iconText: 'PNG', path: 'pdf-to/images', hot: true, acceptTypes: ['pdf'] },
+  { id: 'image-format-convert', name: '图片格式转换', desc: '单张图片转换为 PNG、JPG、WEBP、TIFF、ICO 等格式', category: 'scan', iconText: 'FMT', path: 'image/format-convert', hot: true, acceptTypes: IMAGE_CONVERT_ACCEPT_TYPES },
   { id: 'camera-to-pdf', name: '拍照生成PDF', desc: '连续拍照整理成扫描 PDF', category: 'scan', iconText: 'CAM', path: 'scan/camera-to-pdf', hot: true, acceptTypes: ['jpg', 'jpeg', 'png'] },
-  { id: 'document-scan', name: '文件扫描', desc: '逐张拍照预览，添加水印生成 PDF', category: 'scan', iconText: 'SCAN', path: 'scan/document-scan', hot: true, acceptTypes: ['jpg', 'jpeg', 'png'] },
+  { id: 'document-scan', name: '文件扫描', desc: '逐张拍照整理，添加水印生成 PDF', category: 'scan', iconText: 'SCAN', path: 'scan/document-scan', hot: true, acceptTypes: ['jpg', 'jpeg', 'png'] },
   { id: 'id-scan', name: '证件扫描', desc: '身份证、驾驶证、护照快速生成 PDF', category: 'scan', iconText: 'ID', path: 'scan/id-scan', hot: false, acceptTypes: ['jpg', 'jpeg', 'png'] }
 ];
 
@@ -59,6 +61,7 @@ export const TOOL_CONFIGS: Record<string, ToolConfig> = {
   'pdf-to-excel': { processor: 'remotePdf', pickMode: 'file', multiple: false, maxCount: 1, resultExt: 'xlsx', actionText: '转换为Excel', description: 'PDF 转 Excel 需要表格识别能力，当前版本需接入服务端转换能力。', settings: [] },
   'pdf-to-ppt': { processor: 'remotePdf', pickMode: 'file', multiple: false, maxCount: 1, resultExt: 'pptx', actionText: '转换为PPT', description: 'PDF 转 PPT 需要页面渲染和结构重建能力，当前版本需接入服务端转换能力。', settings: [{ key: 'mode', label: '转换模式', type: 'radio', options: ['图片模式', '文本模式'], value: '图片模式' }] },
   'pdf-to-images': { processor: 'remotePdf', pickMode: 'file', multiple: false, maxCount: 1, resultExt: 'png', actionText: '导出图片', description: 'PDF 转图片需要渲染引擎，当前版本需接入服务端转换能力。', settings: [{ key: 'format', label: '导出格式', type: 'radio', options: ['PNG', 'JPG'], value: 'PNG' }, { key: 'quality', label: '清晰度', type: 'radio', options: ['普通', '高清', '超清'], value: '高清' }] },
+  'image-format-convert': { processor: 'convertImageFormat', pickMode: 'image', multiple: false, maxCount: 1, resultExt: 'png', actionText: '开始转换', pickTitle: '选择一张图片', pickDesc: '支持 JPG、PNG、WEBP、BMP、GIF、TIFF/TIF、ICO、HEIC、HEIF、AVIF，每次只转换 1 张图片。', description: '选择目标格式和质量后生成新的图片文件。', settings: [{ key: 'format', label: '目标格式', type: 'radio', options: IMAGE_FORMAT_OPTION_LABELS, value: 'PNG', hint: 'PNG 适合保留透明背景，JPG 适合照片，WEBP 更轻，TIFF 适合高保真存档，ICO 适合图标导出。' }, { key: 'quality', label: '导出质量', type: 'slider', value: 92, min: 10, max: 100, step: 1, hint: '质量主要影响 JPG、WEBP、HEIC、HEIF 和 AVIF；PNG、BMP、GIF、TIFF、ICO 通常更偏向无损或固定编码。' }] },
   'camera-to-pdf': { processor: 'imagesToPdf', pickMode: 'camera', multiple: true, maxCount: 50, resultExt: 'pdf', actionText: '生成扫描PDF', description: '拍照后可排序并生成 PDF，最多支持 50 张。', settings: [{ key: 'pageSize', label: '页面尺寸', type: 'radio', options: ['A4', 'A5'], value: 'A4' }, { key: 'margin', label: '边距', type: 'radio', options: ['无边距', '窄边距', '普通边距'], value: '窄边距' }] },
   'document-scan': { processor: 'documentScan', pickMode: 'camera', multiple: true, maxCount: 50, resultExt: 'pdf', actionText: '生成扫描PDF', description: '拍照或从相册选择，排序后生成带水印的扫描 PDF，最多支持 50 张。', settings: [] },
   'id-scan': { processor: 'scanImage', pickMode: 'camera', multiple: true, maxCount: 2, resultExt: 'pdf', actionText: '生成证件PDF', pickTitle: '拍照或选择证件图片', pickDesc: '适用于身份证、驾驶证、护照等证件，最多选择 2 张图片。', description: '快速扫描证件生成 PDF，可用于保存、分享或打印。', settings: [{ key: 'layout', label: 'PDF排版', type: 'radio', options: ['1页PDF', '2页PDF'], value: '1页PDF', hint: '1页PDF 会把两张证件图排在同一页；2页PDF 会把每张图片单独放到一页。' }, { key: 'effect', label: '增强效果', type: 'radio', options: ['增强', '原图'], value: '增强', hint: '增强会轻微提升证件图对比度，适合打印和查看。' }] }

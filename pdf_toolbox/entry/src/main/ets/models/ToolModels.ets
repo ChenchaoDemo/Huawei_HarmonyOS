@@ -27,6 +27,7 @@ export interface ToolSetting {
   type: SettingType;
   placeholder?: string;
   hint?: string;
+  dynamicHint?: string;
   value?: SettingValue;
   min?: number;
   max?: number;
@@ -100,6 +101,7 @@ export interface FilePreviewRouteParams {
   toolName?: string;
   sources?: PreviewSourceFile[];
   textPreview?: string;
+  autoOpen?: boolean;
 }
 
 export interface HistoryRecord {
@@ -108,6 +110,7 @@ export interface HistoryRecord {
   toolType: string;
   sourceFileName: string;
   resultFileName: string;
+  resultExt?: string;
   resultPath: string;
   fileSize: string;
   status: string;

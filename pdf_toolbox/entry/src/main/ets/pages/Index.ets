@@ -18,6 +18,7 @@ class ToolRouteParams {
 @Component
 struct Index {
   @State currentTab: number = 0;
+  @State historyRefreshToken: number = 0;
 
   private openPage(url: string, params?: Object): void {
     const options = new AppRouterOptions();
@@ -40,6 +41,13 @@ struct Index {
     this.openPage('pages/main/ToolRunnerPage', params);
   }
 
+  private handleTabChange(index: number): void {
+    this.currentTab = index;
+    if (index === 1) {
+      this.historyRefreshToken += 1;
+    }
+  }
+
   build() {
     Navigation() {
       Tabs({ barPosition: BarPosition.End, index: this.currentTab }) {
@@ -49,7 +57,7 @@ struct Index {
         .tabBar('首页')
 
         TabContent() {
-          HistoryPage()
+          HistoryPage({ refreshToken: this.historyRefreshToken })
         }
         .tabBar('记录')
 
@@ -66,7 +74,7 @@ struct Index {
       .barHeight(58)
       .barBackgroundColor(Color.White)
       .animationDuration(180)
-      .onChange((index: number) => this.currentTab = index)
+      .onChange((index: number) => this.handleTabChange(index))
     }
     .hideTitleBar(true)
     .mode(NavigationMode.Stack)

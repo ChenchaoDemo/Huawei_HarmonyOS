@@ -1,12 +1,15 @@
 import { fileIo, fileUri } from '@kit.CoreFileKit';
 import { filePreview } from '@kit.PreviewKit';
-import { bytesToText } from '../utils/FormatUtils';
+import { findImageFormatTarget, isImageExt } from '../constants/ImageFormatConstants';
+import { bytesToText, fileStem, generateId } from '../utils/FormatUtils';
 import { AppContext } from './AppContext';
 
 export interface PreviewFileInfo {
   name: string;
   path: string;
 }
+
+const PDF_PREVIEW_CACHE_DIR = 'pdf_preview';
 
 export class FilePreviewService {
   static toPreviewUri(path: string): string {
@@ -17,23 +20,19 @@ export class FilePreviewService {
   }
 
   static ext(name: string): string {
-    const dot = name.lastIndexOf('.');
-    return dot >= 0 ? name.substring(dot + 1).toLowerCase() : '';
+    const clean = (name || '').split('?')[0];
+    const dot = clean.lastIndexOf('.');
+    return dot >= 0 ? clean.substring(dot + 1).toLowerCase() : '';
   }
 
   static mimeType(name: string): string {
     const ext = FilePreviewService.ext(name);
+    const imageFormat = findImageFormatTarget(ext);
+    if (imageFormat) {
+      return imageFormat.mime;
+    }
     if (ext === 'pdf') {
       return 'application/pdf';
-    }
-    if (ext === 'png') {
-      return 'image/png';
-    }
-    if (ext === 'jpg' || ext === 'jpeg') {
-      return 'image/jpeg';
-    }
-    if (ext === 'webp') {
-      return 'image/webp';
     }
     if (ext === 'txt') {
       return 'text/plain';
@@ -60,12 +59,15 @@ export class FilePreviewService {
   }
 
   static isImage(name: string): boolean {
-    const ext = FilePreviewService.ext(name);
-    return ext === 'png' || ext === 'jpg' || ext === 'jpeg' || ext === 'webp';
+    return isImageExt(FilePreviewService.ext(name));
   }
 
   static isPdf(name: string): boolean {
     return FilePreviewService.ext(name) === 'pdf';
+  }
+
+  static isPdfFile(name: string, path: string = ''): boolean {
+    return FilePreviewService.isPdf(name) || FilePreviewService.ext(path) === 'pdf';
   }
 
   static isText(name: string): boolean {
@@ -119,6 +121,51 @@ export class FilePreviewService {
       return matches && matches.length > 0 ? matches.length : 1;
     } catch (_) {
       return 0;
+    }
+  }
+
+  private static previewCacheDir(): string {
+    const context = AppContext.getContext();
+    const dir = `${context.cacheDir}/${PDF_PREVIEW_CACHE_DIR}`;
+    try {
+      fileIo.mkdirSync(dir);
+    } catch (_) {
+    }
+    return dir;
+  }
+
+  static preparePdfReaderPath(info: PreviewFileInfo): string {
+    if (!info.path.length) {
+      return '';
+    }
+    if (!info.path.includes('://')) {
+      return info.path;
+    }
+
+    const ext = FilePreviewService.ext(info.name) || FilePreviewService.ext(info.path) || 'pdf';
+    const stem = fileStem(info.name) || 'preview';
+    const targetPath = `${FilePreviewService.previewCacheDir()}/${stem}_${generateId('pdf')}.${ext}`;
+    const bytes = FilePreviewService.readBytes(info.path);
+    const opened = fileIo.openSync(targetPath, fileIo.OpenMode.CREATE | fileIo.OpenMode.TRUNC | fileIo.OpenMode.READ_WRITE);
+    try {
+      fileIo.writeSync(opened.fd, bytes.buffer);
+    } finally {
+      fileIo.closeSync(opened);
+    }
+    return targetPath;
+  }
+
+  static cleanupPreparedPdfPath(path: string): void {
+    if (!path.length) {
+      return;
+    }
+    const dir = FilePreviewService.previewCacheDir();
+    if (!path.startsWith(`${dir}/`)) {
+      return;
+    }
+    try {
+      fileIo.unlinkSync(path);
+    } catch (_) {
     }
   }
 

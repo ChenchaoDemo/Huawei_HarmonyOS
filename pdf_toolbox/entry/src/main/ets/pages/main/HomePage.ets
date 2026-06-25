@@ -9,6 +9,7 @@ export struct HomePage {
   @State keyword: string = '';
   @State selectedCategory: string = 'all';
   @State recentRecords: HistoryRecord[] = [];
+  private readonly hiddenHomeToolIds: string[] = ['pdf-compress', 'pdf-encrypt', 'camera-to-pdf'];
 
   async aboutToAppear(): Promise<void> {
     this.recentRecords = await HistoryService.getRecords();
@@ -22,12 +23,20 @@ export struct HomePage {
     return [tool.name, tool.desc, tool.category, ...tool.acceptTypes].join(' ').toLowerCase().includes(key);
   }
 
+  private isVisibleOnHome(tool: ToolMeta): boolean {
+    return !this.hiddenHomeToolIds.includes(tool.id);
+  }
+
   private allCategories(): CategoryMeta[] {
     return CATEGORIES.filter((category: CategoryMeta) => category.id !== 'hot');
   }
 
+  private toolsForCategory(categoryId: string): ToolMeta[] {
+    return getToolsByCategory(categoryId).filter((tool: ToolMeta) => this.isVisibleOnHome(tool));
+  }
+
   private categoryTools(category: CategoryMeta): ToolMeta[] {
-    return getToolsByCategory(category.id).filter((tool: ToolMeta) => this.matchKeyword(tool));
+    return this.toolsForCategory(category.id).filter((tool: ToolMeta) => this.matchKeyword(tool));
   }
 
   private filteredCategories(): CategoryMeta[] {
@@ -42,7 +51,7 @@ export struct HomePage {
     const result: ToolMeta[] = [];
     this.recentRecords.forEach((record: HistoryRecord) => {
       const tool = TOOLS.find((item: ToolMeta) => item.name === record.toolName);
-      if (tool && !used.has(tool.id) && this.matchKeyword(tool)) {
+      if (tool && this.isVisibleOnHome(tool) && !used.has(tool.id) && this.matchKeyword(tool)) {
         used.add(tool.id);
         result.push(tool);
       }

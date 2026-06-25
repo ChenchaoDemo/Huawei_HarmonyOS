@@ -172,7 +172,8 @@ struct DocumentScanPage {
       };
       const output = await documentScan(request);
       await this.tick('正在生成 PDF', 72);
-      const fileName = normalizeOutputFileName(this.outputName, '文件扫描', output.ext || 'pdf');
+      const resultExt = (output.ext || 'pdf').toLowerCase();
+      const fileName = normalizeOutputFileName(this.outputName, '文件扫描', resultExt);
       const saved = FileService.saveTempFile(output.content, fileName);
       await this.tick('正在保存结果', 92);
       this.result = {
@@ -188,6 +189,7 @@ struct DocumentScanPage {
         toolType: 'scan',
         sourceFileName: this.files.map((file: PickedFile) => file.name).join('、'),
         resultFileName: fileName,
+        resultExt,
         resultPath: saved.path,
         fileSize: formatFileSize(saved.size),
         status: '处理成功',
@@ -209,8 +211,12 @@ struct DocumentScanPage {
       return;
     }
     try {
-      await FileService.saveToPicker(this.result.path, this.result.name);
-      promptAction.showToast({ message: '保存成功' });
+      const savedTo = await FileService.saveOutput(this.result.path, this.result.name);
+      if (savedTo === 'album') {
+        promptAction.showToast({ message: '已保存到相册' });
+      } else if (savedTo === 'document') {
+        promptAction.showToast({ message: '保存成功' });
+      }
     } catch (err) {
       promptAction.showToast({ message: `保存失败：${this.errText(err as Error | Object)}` });
     }
@@ -373,13 +379,6 @@ struct DocumentScanPage {
                         .width('100%')
                         .padding({ left: 8, right: 8 })
                       Row({ space: 6 }) {
-                        Button('预览')
-                          .height(36)
-                          .fontSize(11)
-                          .fontColor(PRIMARY_COLOR)
-                          .backgroundColor('#EAF1FF')
-                          .layoutWeight(1)
-                          .onClick(() => this.openImagePreview(file, index))
                         Button('上移')
                           .height(36)
                           .fontSize(11)

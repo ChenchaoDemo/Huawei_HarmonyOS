@@ -1,6 +1,7 @@
 import { systemShare } from '@kit.ShareKit';
 import { uniformTypeDescriptor } from '@kit.ArkData';
 import { APP_NAME } from '../constants/AppConstants';
+import { findImageFormatTarget } from '../constants/ImageFormatConstants';
 import { AppContext } from './AppContext';
 import { FilePreviewService } from './FilePreviewService';
 
@@ -13,14 +14,30 @@ export interface ShareFileInfo {
 export class ShareService {
   private static utd(name: string): string {
     const ext = FilePreviewService.ext(name);
+    const imageFormat = findImageFormatTarget(ext);
+    if (imageFormat) {
+      if (imageFormat.ext === 'jpg') {
+        return uniformTypeDescriptor.UniformDataType.JPEG;
+      }
+      if (imageFormat.ext === 'png') {
+        return uniformTypeDescriptor.UniformDataType.PNG;
+      }
+      if (imageFormat.ext === 'bmp') {
+        return uniformTypeDescriptor.UniformDataType.BMP;
+      }
+      if (imageFormat.ext === 'gif') {
+        return uniformTypeDescriptor.UniformDataType.GIF;
+      }
+      if (imageFormat.ext === 'tiff') {
+        return uniformTypeDescriptor.UniformDataType.TIFF;
+      }
+      if (imageFormat.ext === 'ico') {
+        return uniformTypeDescriptor.UniformDataType.ICO;
+      }
+      return uniformTypeDescriptor.UniformDataType.IMAGE;
+    }
     if (ext === 'pdf') {
       return uniformTypeDescriptor.UniformDataType.PDF;
-    }
-    if (ext === 'jpg' || ext === 'jpeg') {
-      return uniformTypeDescriptor.UniformDataType.JPEG;
-    }
-    if (ext === 'png') {
-      return uniformTypeDescriptor.UniformDataType.PNG;
     }
     if (ext === 'txt' || ext === 'md' || ext === 'csv' || ext === 'log') {
       return uniformTypeDescriptor.UniformDataType.PLAIN_TEXT;
