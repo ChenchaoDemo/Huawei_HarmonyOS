@@ -1,7 +1,7 @@
 import { PickedFile, ProcessorRequest, ProcessorResult } from '../models/ToolModels';
 import { bytesToText } from '../utils/FormatUtils';
 import { FileService } from '../services/FileService';
-import { PdfDocumentData, countPdfPages, mergePdfDocuments, selectPdfPages } from './BasicPdfManipulator';
+import { PdfDocumentData, countPdfPages, mergePdfDocuments, selectPdfPages, watermarkPdfDocument } from './BasicPdfManipulator';
 
 function readPdf(file: PickedFile): PdfDocumentData {
   return new PdfDocumentData(file.name, FileService.readFile(file));
@@ -121,8 +121,29 @@ export async function reorderPdfPages(request: ProcessorRequest): Promise<Proces
   };
 }
 
-export async function watermarkPdf(_: ProcessorRequest): Promise<ProcessorResult> {
-  throw new Error('PDF 加水印需要对复杂页面资源进行安全改写，当前原生版需接入服务端转换能力后启用。');
+export async function watermarkPdf(request: ProcessorRequest): Promise<ProcessorResult> {
+  const file = request.files[0];
+  if (!file) {
+    throw new Error('请选择 PDF 文件');
+  }
+  const text = String(value(request, 'text', '文件处理工具箱')).trim();
+  if (!text) {
+    throw new Error('请输入水印文字');
+  }
+  const document = readPdf(file);
+  const result = watermarkPdfDocument(document, {
+    text: text.slice(0, 64),
+    opacity: Number(value(request, 'opacity', 35)),
+    fontSize: Number(value(request, 'fontSize', 32)),
+    angle: Number(value(request, 'angle', -30)),
+    position: String(value(request, 'position', '居中')),
+    color: '#8A93A8'
+  });
+  return {
+    content: result.content,
+    ext: 'pdf',
+    summary: `已为 ${result.pageCount} 页添加文字水印`
+  };
 }
 
 export function estimatePageCountFromBytes(bytes: Uint8Array): number {

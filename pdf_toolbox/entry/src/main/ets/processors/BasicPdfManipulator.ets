@@ -51,6 +51,15 @@ export class PdfBuildResult {
   }
 }
 
+export interface PdfWatermarkOptions {
+  text: string;
+  opacity: number;
+  fontSize: number;
+  angle: number;
+  position: string;
+  color?: string;
+}
+
 function bytesToBinaryString(bytes: Uint8Array): string {
   const chunks: string[] = [];
   const chunkSize = 8192;
@@ -155,6 +164,19 @@ function appendEntries(body: string, entries: string[]): string {
   return `${body.slice(0, index)} ${insert} ${body.slice(index)}`;
 }
 
+function setEntry(body: string, name: string, entry: string): string {
+  const match = new RegExp(`/${name}\\b`).exec(body);
+  if (!match) {
+    return appendEntries(body, [entry]);
+  }
+  const valueStart = match.index + name.length + 1;
+  return `${body.slice(0, match.index)}${entry}${body.slice(valueEnd(body, valueStart))}`;
+}
+
+function entryValue(entry: string, name: string): string {
+  return entry.replace(new RegExp(`^/${name}\\b\\s*`), '').trim();
+}
+
 function removeEntry(body: string, name: string): string {
   const match = new RegExp(`/${name}\\b`).exec(body);
   if (!match) {
@@ -176,6 +198,205 @@ function collectRefs(body: string): string[] {
     return raw;
   });
   return refs;
+}
+
+function utf16Hex(text: string): string {
+  let hex = 'FEFF';
+  for (let i = 0; i < text.length; i += 1) {
+    hex += text.charCodeAt(i).toString(16).padStart(4, '0').toUpperCase();
+  }
+  return `<${hex}>`;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function normalizeOpacity(value: number): number {
+  if (value !== value) {
+    return 0.35;
+  }
+  return clamp(value / 100, 0.08, 0.9);
+}
+
+function normalizeFontSize(value: number): number {
+  if (value !== value) {
+    return 32;
+  }
+  return clamp(value, 12, 96);
+}
+
+function normalizeHexColor(color: string | undefined): number[] {
+  let value = String(color || '#8A93A8').trim().replace(/^#/, '');
+  if (/^[0-9a-fA-F]{3}$/.test(value)) {
+    value = value.split('').map((item: string) => item + item).join('');
+  }
+  if (!/^[0-9a-fA-F]{6}$/.test(value)) {
+    value = '8A93A8';
+  }
+  return [0, 2, 4].map((index: number) => parseInt(value.slice(index, index + 2), 16) / 255);
+}
+
+function parsePageBox(pageBody: string): number[] {
+  const entry = extractEntry(pageBody, 'CropBox') || extractEntry(pageBody, 'MediaBox');
+  if (!entry) {
+    return [0, 0, 595, 842];
+  }
+  const match = /\[([^\]]+)\]/.exec(entry);
+  if (!match) {
+    return [0, 0, 595, 842];
+  }
+  const numbers = match[1].split(/\s+/)
+    .map((item: string) => Number(item))
+    .filter((item: number) => item === item);
+  if (numbers.length < 4 || numbers[2] === numbers[0] || numbers[3] === numbers[1]) {
+    return [0, 0, 595, 842];
+  }
+  return numbers.slice(0, 4);
+}
+
+function estimateTextWidth(text: string, fontSize: number): number {
+  return Math.max(fontSize, text.length * fontSize * 0.62);
+}
+
+function watermarkPoint(box: number[], text: string, fontSize: number, position: string): number[] {
+  const left = Math.min(box[0], box[2]);
+  const right = Math.max(box[0], box[2]);
+  const bottom = Math.min(box[1], box[3]);
+  const top = Math.max(box[1], box[3]);
+  const width = right - left;
+  const height = top - bottom;
+  const margin = Math.min(54, Math.max(24, Math.min(width, height) * 0.08));
+  const textWidth = estimateTextWidth(text, fontSize);
+  const points: Record<string, number[]> = {
+    '左上': [left + margin, top - margin - fontSize],
+    '右上': [right - margin - textWidth, top - margin - fontSize],
+    '左下': [left + margin, bottom + margin],
+    '右下': [right - margin - textWidth, bottom + margin],
+    '居中': [left + (width - textWidth) / 2, bottom + (height - fontSize) / 2]
+  };
+  const point = points[position] || points['居中'];
+  return [
+    clamp(point[0], left + 12, Math.max(left + 12, right - 12)),
+    clamp(point[1], bottom + 12, Math.max(bottom + 12, top - 12))
+  ];
+}
+
+function textMatrix(x: number, y: number, angle: number): string {
+  const radians = angle * Math.PI / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  return `${cos.toFixed(4)} ${sin.toFixed(4)} ${(-sin).toFixed(4)} ${cos.toFixed(4)} ${x.toFixed(2)} ${y.toFixed(2)} Tm`;
+}
+
+function watermarkTextCommand(text: string, fontSize: number, x: number, y: number, angle: number): string {
+  return [
+    'BT',
+    `/PTBWMF1 ${fontSize.toFixed(1)} Tf`,
+    textMatrix(x, y, angle),
+    `${utf16Hex(text)} Tj`,
+    'ET'
+  ].join('\n');
+}
+
+function watermarkCommands(options: PdfWatermarkOptions, pageBody: string): string {
+  const text = options.text.trim();
+  if (!text) {
+    return '';
+  }
+  const box = parsePageBox(pageBody);
+  const left = Math.min(box[0], box[2]);
+  const right = Math.max(box[0], box[2]);
+  const bottom = Math.min(box[1], box[3]);
+  const top = Math.max(box[1], box[3]);
+  const fontSize = normalizeFontSize(options.fontSize);
+  const angle = clamp(Number(options.angle || 0), -75, 75);
+  const rgb = normalizeHexColor(options.color);
+  const commands: string[] = [
+    'q',
+    '/PTBWMGS1 gs',
+    `${rgb[0].toFixed(3)} ${rgb[1].toFixed(3)} ${rgb[2].toFixed(3)} rg`
+  ];
+
+  if (options.position === '平铺') {
+    const textWidth = estimateTextWidth(text, fontSize);
+    const spacingX = Math.max(180, textWidth + 96);
+    const spacingY = Math.max(120, fontSize * 4.2);
+    let count = 0;
+    for (let y = bottom + 36; y < top; y += spacingY) {
+      for (let x = left + 24; x < right; x += spacingX) {
+        commands.push(watermarkTextCommand(text, fontSize, x, y, angle));
+        count += 1;
+        if (count >= 120) {
+          break;
+        }
+      }
+      if (count >= 120) {
+        break;
+      }
+    }
+  } else {
+    const point = watermarkPoint(box, text, fontSize, options.position || '居中');
+    commands.push(watermarkTextCommand(text, fontSize, point[0], point[1], angle));
+  }
+
+  commands.push('Q');
+  return commands.join('\n');
+}
+
+function appendNameToDictionary(dictionary: string, name: string, ref: string): string {
+  if (new RegExp(`/${name}\\b`).test(dictionary)) {
+    return dictionary;
+  }
+  return appendEntries(dictionary, [`/${name} ${ref}`]);
+}
+
+function ensureNestedResource(resourcesBody: string, typeName: string, name: string, ref: string, objects: string[]): string {
+  const entry = extractEntry(resourcesBody, typeName);
+  if (!entry) {
+    return appendEntries(resourcesBody, [`/${typeName} << /${name} ${ref} >>`]);
+  }
+
+  const value = entryValue(entry, typeName);
+  if (value.startsWith('<<')) {
+    return setEntry(resourcesBody, typeName, `/${typeName} ${appendNameToDictionary(value, name, ref)}`);
+  }
+
+  const refMatch = /^(\d+)\s+0\s+R\b/.exec(value);
+  if (refMatch) {
+    const objectId = Number(refMatch[1]);
+    if (!objectId || objectId > objects.length) {
+      throw new Error('PDF 页面资源引用异常，暂不支持端侧加水印');
+    }
+    objects[objectId - 1] = appendNameToDictionary(objects[objectId - 1], name, ref);
+    return resourcesBody;
+  }
+
+  throw new Error('PDF 页面资源结构暂不支持端侧加水印');
+}
+
+function ensureWatermarkResources(resourcesBody: string, fontId: number, stateId: number, objects: string[]): string {
+  let next = ensureNestedResource(resourcesBody, 'Font', 'PTBWMF1', `${fontId} 0 R`, objects);
+  next = ensureNestedResource(next, 'ExtGState', 'PTBWMGS1', `${stateId} 0 R`, objects);
+  return next;
+}
+
+function appendContentRef(pageBody: string, contentId: number): string {
+  const entry = extractEntry(pageBody, 'Contents');
+  const ref = `${contentId} 0 R`;
+  if (!entry) {
+    return appendEntries(pageBody, [`/Contents ${ref}`]);
+  }
+
+  const value = entryValue(entry, 'Contents');
+  if (/^\d+\s+0\s+R\b/.test(value)) {
+    return setEntry(pageBody, 'Contents', `/Contents [${value} ${ref}]`);
+  }
+  if (value.startsWith('[')) {
+    const inner = value.slice(1, value.lastIndexOf(']')).trim();
+    return setEntry(pageBody, 'Contents', `/Contents [${inner}${inner ? ' ' : ''}${ref}]`);
+  }
+  throw new Error('PDF 页面内容结构暂不支持端侧加水印');
 }
 
 function parseObjects(source: string): PdfObject[] {
@@ -273,6 +494,8 @@ class SelectedPdfBuilder {
   catalogId: number = 1;
   pagesId: number = 2;
   pageIds: number[] = [];
+  watermarkFontId: number = 0;
+  watermarkStateId: number = 0;
 
   addObject(body: string): number {
     this.objects.push(body);
@@ -299,6 +522,50 @@ class SelectedPdfBuilder {
     return objectId;
   }
 
+  private ensureWatermarkObjects(options: PdfWatermarkOptions): void {
+    if (!this.watermarkFontId) {
+      const fontDescId = this.addObject('<< /Type /Font /Subtype /CIDFontType0 /BaseFont /STSong-Light /CIDSystemInfo << /Registry (Adobe) /Ordering (GB1) /Supplement 2 >> /DW 1000 >>');
+      this.watermarkFontId = this.addObject(`<< /Type /Font /Subtype /Type0 /BaseFont /STSong-Light /Encoding /UniGB-UCS2-H /DescendantFonts [${fontDescId} 0 R] >>`);
+    }
+    if (!this.watermarkStateId) {
+      const opacity = normalizeOpacity(options.opacity);
+      this.watermarkStateId = this.addObject(`<< /Type /ExtGState /ca ${opacity.toFixed(2)} /CA ${opacity.toFixed(2)} >>`);
+    }
+  }
+
+  private addWatermarkResourcesToPage(pageId: number): void {
+    let pageBody = this.objects[pageId - 1];
+    const resources = extractEntry(pageBody, 'Resources');
+    if (!resources) {
+      this.objects[pageId - 1] = appendEntries(pageBody, [`/Resources << /Font << /PTBWMF1 ${this.watermarkFontId} 0 R >> /ExtGState << /PTBWMGS1 ${this.watermarkStateId} 0 R >> >>`]);
+      return;
+    }
+
+    const value = entryValue(resources, 'Resources');
+    const refMatch = /^(\d+)\s+0\s+R\b/.exec(value);
+    if (refMatch) {
+      const objectId = Number(refMatch[1]);
+      if (!objectId || objectId > this.objects.length) {
+        throw new Error('PDF 页面资源引用异常，暂不支持端侧加水印');
+      }
+      this.objects[objectId - 1] = ensureWatermarkResources(this.objects[objectId - 1], this.watermarkFontId, this.watermarkStateId, this.objects);
+      return;
+    }
+
+    if (value.startsWith('<<')) {
+      pageBody = setEntry(pageBody, 'Resources', `/Resources ${ensureWatermarkResources(value, this.watermarkFontId, this.watermarkStateId, this.objects)}`);
+      this.objects[pageId - 1] = pageBody;
+      return;
+    }
+
+    throw new Error('PDF 页面资源结构暂不支持端侧加水印');
+  }
+
+  private addWatermarkContentToPage(pageId: number, content: string): void {
+    const contentId = this.addObject(`<< /Length ${content.length} >>\nstream\n${content}\nendstream`);
+    this.objects[pageId - 1] = appendContentRef(this.objects[pageId - 1], contentId);
+  }
+
   addPage(document: ParsedPdfDocument, page: PdfObject): void {
     const inherited = inheritedEntries(page, document.objectMap);
     const missingEntries = ['MediaBox', 'CropBox', 'Resources', 'Rotate']
@@ -307,6 +574,23 @@ class SelectedPdfBuilder {
     const body = removeEntry(appendEntries(page.body, missingEntries), 'Parent');
     const pageId = this.copyObject(document, page, body);
     this.objects[pageId - 1] = appendEntries(this.objects[pageId - 1], [`/Parent ${this.pagesId} 0 R`]);
+    this.pageIds.push(pageId);
+  }
+
+  addWatermarkedPage(document: ParsedPdfDocument, page: PdfObject, options: PdfWatermarkOptions): void {
+    const inherited = inheritedEntries(page, document.objectMap);
+    const missingEntries = ['MediaBox', 'CropBox', 'Resources', 'Rotate']
+      .filter((name: string) => !hasEntry(page.body, name))
+      .map((name: string) => inherited[name] || '');
+    const body = removeEntry(appendEntries(page.body, missingEntries), 'Parent');
+    const content = watermarkCommands(options, body);
+    const pageId = this.copyObject(document, page, body);
+    this.objects[pageId - 1] = appendEntries(this.objects[pageId - 1], [`/Parent ${this.pagesId} 0 R`]);
+    if (content.length > 0) {
+      this.ensureWatermarkObjects(options);
+      this.addWatermarkResourcesToPage(pageId);
+      this.addWatermarkContentToPage(pageId, content);
+    }
     this.pageIds.push(pageId);
   }
 
@@ -343,6 +627,19 @@ export function selectPdfPages(document: PdfDocumentData, pageNumbers: number[])
     return page;
   });
   return buildSelectedPdf([parsed], () => pages);
+}
+
+export function watermarkPdfDocument(document: PdfDocumentData, options: PdfWatermarkOptions): PdfBuildResult {
+  const source = bytesToBinaryString(document.data);
+  if (/\/ByteRange\b|\/Type\s*\/Sig\b/.test(source)) {
+    throw new Error(`${document.name} 可能包含数字签名，本地重建会导致签名失效，暂不支持端侧加水印`);
+  }
+  const parsed = parseDocument(document);
+  const builder = new SelectedPdfBuilder();
+  parsed.pages.forEach((page: PdfObject) => {
+    builder.addWatermarkedPage(parsed, page, options);
+  });
+  return builder.build();
 }
 
 export function countPdfPages(document: PdfDocumentData): number {
